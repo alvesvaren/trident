@@ -100,11 +100,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Get the raw line (including comment)
-    fn current_raw_line(&self) -> &'a str {
-        self.lines[self.i]
-    }
-
     /// Check if line is only whitespace and/or a comment
     fn is_comment_or_empty_line(&self) -> bool {
         let raw = self.lines[self.i];
@@ -137,27 +132,6 @@ impl<'a> Parser<'a> {
     fn parse_items_until_end(&mut self) -> Result<Vec<Stmt>, ParseError> {
         let mut items = Vec::new();
         while !self.eof() {
-            if let Some(stmt) = self.parse_stmt_or_none()? {
-                items.push(stmt);
-            }
-        }
-        Ok(items)
-    }
-
-    fn parse_items_until_rbrace(&mut self) -> Result<Vec<Stmt>, ParseError> {
-        let mut items = Vec::new();
-        loop {
-            if self.eof() {
-                return self.err(1, "unexpected end of file; missing '}'");
-            }
-
-            let t = self.current_line_wo_comment().trim();
-            
-            if t == "}" {
-                self.advance();
-                break;
-            }
-
             if let Some(stmt) = self.parse_stmt_or_none()? {
                 items.push(stmt);
             }
