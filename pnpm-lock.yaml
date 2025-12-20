@@ -15,8 +15,8 @@ importers:
         specifier: ^19.2.0
         version: 19.2.3(react@19.2.3)
       trident-core:
-        specifier: file:./trident-core/pkg
-        version: file:trident-core/pkg
+        specifier: link:./trident-core/pkg
+        version: link:trident-core/pkg
     devDependencies:
       '@eslint/js':
         specifier: ^9.39.1
@@ -1078,9 +1078,6 @@ packages:
     resolution: {integrity: sha512-j2Zq4NyQYG5XMST4cbs02Ak8iJUdxRM0XI5QyxXuZOzKOINmWurp3smXu3y5wDcJrptwpSjgXHzIQxR0omXljQ==}
     engines: {node: '>=12.0.0'}
 
-  trident-core@file:trident-core/pkg:
-    resolution: {directory: trident-core/pkg, type: directory}
-
   ts-api-utils@2.1.0:
     resolution: {integrity: sha512-CUgTZL1irw8u29bzrOD/nH85jqyc74D6SshFgujOIA7osm2Rz7dYH77agkx7H4FBNxDq7Cjf+IjaX/8zwFW+ZQ==}
     engines: {node: '>=18.12'}
@@ -2140,8 +2137,6 @@ snapshots:
     dependencies:
       fdir: 6.5.0(picomatch@4.0.3)
       picomatch: 4.0.3
-
-  trident-core@file:trident-core/pkg: {}
 
   ts-api-utils@2.1.0(typescript@5.9.3):
     dependencies:

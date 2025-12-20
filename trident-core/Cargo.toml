@@ -2,6 +2,9 @@
 name = "trident-core"
 version = "0.1.0"
 edition = "2024"
+description = "Trident core"
+license = "none"
+repository = "github.com/alvesvaren/trident"
 
 [lib]
 crate-type = ["cdylib"]

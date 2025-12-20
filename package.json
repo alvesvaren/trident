@@ -12,7 +12,7 @@
   "dependencies": {
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "trident-core": "file:./trident-core/pkg"
+    "trident-core": "link:./trident-core/pkg"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

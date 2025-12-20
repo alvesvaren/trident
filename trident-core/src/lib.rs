@@ -6,6 +6,6 @@ extern "C" {
 }
 
 #[wasm_bindgen]
-pub fn greet(name: &str) {
-    alert(&format!("Hello, {}!", name));
+pub fn greet2(name: &str) -> String {
+    return format!("Hello, {}?", name);
 }
