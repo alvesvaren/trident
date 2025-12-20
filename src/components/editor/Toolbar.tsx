@@ -1,7 +1,6 @@
 import { useRef, useCallback } from "react";
-import { Lock, Save, FolderOpen, Trash2, Unlock } from "lucide-react";
+import { Save, FolderOpen, Trash2, Unlock } from "lucide-react";
 import * as trident_core from "trident-core";
-import "./Toolbar.css";
 
 interface ToolbarProps {
     code: string;
@@ -53,11 +52,11 @@ export function Toolbar({ code, onCodeChange }: ToolbarProps) {
     }, [code, onCodeChange]);
 
     return (
-        <div className="toolbar">
+        <div className="h-12 shrink-0 bg-neutral-800 border-t border-neutral-700 flex items-center px-3 gap-2">
             <input
                 type="file"
                 ref={fileInputRef}
-                style={{ display: "none" }}
+                className="hidden"
                 accept=".trd,.txt"
                 onChange={handleFileChange}
             />
@@ -81,12 +80,12 @@ interface ToolbarButtonProps {
 
 function ToolbarButton({ icon, label, onClick }: ToolbarButtonProps) {
     return (
-        <button className="toolbar-button" onClick={onClick}>
+        <button
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-700 border border-neutral-600 rounded text-neutral-200 cursor-pointer font-mono text-xs transition-colors hover:bg-neutral-600 active:bg-neutral-800"
+            onClick={onClick}
+        >
             {icon}
             {label}
         </button>
     );
 }
-
-// Re-export Lock icon for use in diagram nodes
-export { Lock };

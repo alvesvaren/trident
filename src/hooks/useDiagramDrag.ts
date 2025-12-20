@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import * as trident_core from "trident-core";
 import type { DiagramNode, DiagramGroup, DragState } from "../types/diagram";
 
@@ -9,6 +9,7 @@ interface UseDiagramDragOptions {
 
 interface UseDiagramDragResult {
     dragState: DragState | null;
+    scaleRef: React.MutableRefObject<number>;
     startNodeDrag: (e: React.MouseEvent, node: DiagramNode) => void;
     startGroupDrag: (e: React.MouseEvent, group: DiagramGroup, index: number) => void;
     handleMouseMove: (e: React.MouseEvent) => void;
@@ -20,6 +21,7 @@ export function useDiagramDrag({
     onCodeChange,
 }: UseDiagramDragOptions): UseDiagramDragResult {
     const [dragState, setDragState] = useState<DragState | null>(null);
+    const scaleRef = useRef<number>(1);
 
     const startNodeDrag = useCallback((e: React.MouseEvent, node: DiagramNode) => {
         e.preventDefault();
@@ -63,8 +65,10 @@ export function useDiagramDrag({
         (e: React.MouseEvent) => {
             if (!dragState) return;
 
-            const deltaX = e.clientX - dragState.startMouseX;
-            const deltaY = e.clientY - dragState.startMouseY;
+            // Divide by scale to get correct delta in diagram coordinates
+            const scale = scaleRef.current;
+            const deltaX = (e.clientX - dragState.startMouseX) / scale;
+            const deltaY = (e.clientY - dragState.startMouseY) / scale;
 
             setDragState((prev) =>
                 prev
@@ -106,6 +110,7 @@ export function useDiagramDrag({
 
     return {
         dragState,
+        scaleRef,
         startNodeDrag,
         startGroupDrag,
         handleMouseMove,

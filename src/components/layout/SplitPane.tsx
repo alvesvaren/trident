@@ -1,5 +1,4 @@
 import { useState, useCallback, useRef, useEffect, type ReactNode } from "react";
-import "./SplitPane.css";
 
 interface SplitPaneProps {
     left: ReactNode;
@@ -35,7 +34,6 @@ export function SplitPane({
             const containerWidth = containerRect.width;
             const newLeftWidth = e.clientX - containerRect.left;
 
-            // Enforce min widths
             const maxLeftWidth = containerWidth - minRightWidth;
             const clampedWidth = Math.max(minLeftWidth, Math.min(maxLeftWidth, newLeftWidth));
 
@@ -56,15 +54,16 @@ export function SplitPane({
     }, [isDragging, minLeftWidth, minRightWidth]);
 
     return (
-        <div ref={containerRef} className="split-pane">
-            <div className="split-pane-left" style={{ width: leftWidth }}>
+        <div ref={containerRef} className="flex h-screen w-full overflow-hidden">
+            <div className="shrink-0 flex flex-col overflow-hidden" style={{ width: leftWidth }}>
                 {left}
             </div>
             <div
-                className={`split-pane-handle ${isDragging ? "split-pane-handle-active" : ""}`}
+                className={`w-1.5 shrink-0 cursor-col-resize transition-colors duration-150 ${isDragging ? "bg-blue-500" : "bg-neutral-700 hover:bg-blue-500"
+                    }`}
                 onMouseDown={handleMouseDown}
             />
-            <div className="split-pane-right">
+            <div className="flex-1 overflow-hidden">
                 {right}
             </div>
         </div>

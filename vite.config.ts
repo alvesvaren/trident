@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
+import tailwindcss from "@tailwindcss/vite";
 import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
 
@@ -9,6 +10,7 @@ let cargo: ChildProcess | null = null;
 
 export default defineConfig({
   plugins: [
+    tailwindcss(),
     {
       name: "cargo-watch",
       configureServer({ httpServer, watcher, ws }) {
@@ -45,5 +47,5 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: ["trident-core", "@syntect/wasm"],
-  }
+  },
 });

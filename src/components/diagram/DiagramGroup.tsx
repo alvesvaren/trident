@@ -1,5 +1,4 @@
 import type { DiagramGroup as DiagramGroupType } from "../../types/diagram";
-import "./DiagramGroup.css";
 
 interface DiagramGroupProps {
     group: DiagramGroupType;
@@ -11,7 +10,7 @@ interface DiagramGroupProps {
 export function DiagramGroup({ group, x, y, onMouseDown }: DiagramGroupProps) {
     return (
         <div
-            className="diagram-group"
+            className="absolute bg-neutral-800 border border-neutral-700 rounded-md box-border cursor-grab active:cursor-grabbing"
             style={{
                 left: x,
                 top: y,
@@ -20,7 +19,9 @@ export function DiagramGroup({ group, x, y, onMouseDown }: DiagramGroupProps) {
             }}
             onMouseDown={onMouseDown}
         >
-            <div className="diagram-group-label">{group.id}</div>
+            <div className="absolute -top-2.5 left-2 bg-neutral-800 px-1.5 text-[11px] font-mono text-neutral-500 pointer-events-none">
+                {group.id}
+            </div>
         </div>
     );
 }
