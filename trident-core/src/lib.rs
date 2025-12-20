@@ -25,6 +25,8 @@ pub struct NodeOutput {
     pub label: Option<String>,
     pub body_lines: Vec<String>,
     pub bounds: RectI,
+    /// Whether this node has a fixed position (@pos in the source)
+    pub has_pos: bool,
 }
 
 /// An edge between two nodes
@@ -104,6 +106,7 @@ pub fn compile_diagram(input: &str) -> String {
             label: c.label.clone(),
             body_lines: c.body_lines.clone(),
             bounds,
+            has_pos: c.pos.is_some(),
         }
     }).collect();
     
@@ -165,4 +168,38 @@ pub fn update_group_pos(source: &str, group_id: &str, group_index: usize, x: i32
         console_error(&format!("Group not found (id={:?}, index={})", group_id_opt, group_index));
         source.to_string()
     }
+}
+
+/// Remove a class position (unlock it for auto-layout) and return the new source code
+#[wasm_bindgen]
+pub fn remove_class_pos(source: &str, class_id: &str) -> String {
+    let mut ast = match parser::parse_file(source) {
+        Ok(ast) => ast,
+        Err(e) => {
+            console_error(&format!("Error parsing file: {:?}", e));
+            return source.to_string();
+        }
+    };
+    
+    if parser::remove_class_position(&mut ast, class_id) {
+        parser::emit_file(&ast)
+    } else {
+        console_error(&format!("Class '{}' not found", class_id));
+        source.to_string()
+    }
+}
+
+/// Remove all positions from all classes and groups (unlock everything)
+#[wasm_bindgen]
+pub fn remove_all_pos(source: &str) -> String {
+    let mut ast = match parser::parse_file(source) {
+        Ok(ast) => ast,
+        Err(e) => {
+            console_error(&format!("Error parsing file: {:?}", e));
+            return source.to_string();
+        }
+    };
+    
+    parser::remove_all_positions(&mut ast);
+    parser::emit_file(&ast)
 }

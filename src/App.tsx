@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
-import { compile_diagram, update_class_pos, update_group_pos } from "trident-core";
+import { compile_diagram, update_class_pos, update_group_pos, remove_class_pos, remove_all_pos } from "trident-core";
+import { Lock, Save, FolderOpen, Trash2, Unlock } from "lucide-react";
 
 import Editor from "@monaco-editor/react";
 import { registerSddLanguage } from "./syntax";
@@ -16,6 +17,7 @@ interface DiagramNode {
   label: string | null;
   body_lines: string[];
   bounds: Bounds;
+  has_pos: boolean;
 }
 
 interface DiagramEdge {
@@ -204,22 +206,174 @@ function App() {
     setDragState(null);
   }, []);
 
+  // Unlock a node (remove its @pos)
+  const handleUnlock = useCallback(
+    (nodeId: string, e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const newCode = remove_class_pos(code, nodeId);
+      if (newCode !== code) {
+        setCode(newCode);
+      }
+    },
+    [code]
+  );
+
+  // File input ref for loading files
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Save file
+  const handleSave = useCallback(() => {
+    const blob = new Blob([code], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "untitled.trd";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [code]);
+
+  // Load file
+  const handleLoad = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const content = event.target?.result as string;
+        setCode(content);
+      };
+      reader.readAsText(file);
+    }
+    // Reset the input so the same file can be loaded again
+    e.target.value = "";
+  }, []);
+
+  // Clear editor
+  const handleClear = useCallback(() => {
+    setCode("");
+  }, []);
+
+  // Remove all locks
+  const handleRemoveAllLocks = useCallback(() => {
+    const newCode = remove_all_pos(code);
+    setCode(newCode);
+  }, [code]);
+
   return (
     <div style={{ display: "flex", height: "100vh" }}>
-      <Editor
-        beforeMount={registerSddLanguage}
-        language="trident"
-        theme="trident-dark"
-        height="100vh"
-        width="50vw"
-        value={code}
-        options={{
-          minimap: { enabled: false },
-          fontLigatures: false,
-          fontFamily: "Fira Code VF",
-        }}
-        onChange={(value) => setCode(value ?? "")}
-      />
+      <div style={{ display: "flex", flexDirection: "column", width: "50vw" }}>
+        <Editor
+          beforeMount={registerSddLanguage}
+          language="trident"
+          theme="trident-dark"
+          height="calc(100vh - 48px)"
+          value={code}
+          options={{
+            minimap: { enabled: false },
+            fontLigatures: false,
+            fontFamily: "Fira Code VF",
+          }}
+          onChange={(value) => setCode(value ?? "")}
+        />
+        {/* Toolbar */}
+        <div
+          style={{
+            height: 48,
+            backgroundColor: "#252525",
+            borderTop: "1px solid #404040",
+            display: "flex",
+            alignItems: "center",
+            padding: "0 12px",
+            gap: 8,
+          }}
+        >
+          <input
+            type="file"
+            ref={fileInputRef}
+            style={{ display: "none" }}
+            accept=".trd,.txt"
+            onChange={handleFileChange}
+          />
+          <button
+            onClick={handleSave}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "6px 12px",
+              backgroundColor: "#3d3d3d",
+              border: "1px solid #555",
+              borderRadius: 4,
+              color: "#e0e0e0",
+              cursor: "pointer",
+              fontFamily: "Fira Code VF",
+              fontSize: 12,
+            }}
+          >
+            <Save size={14} /> Save
+          </button>
+          <button
+            onClick={handleLoad}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "6px 12px",
+              backgroundColor: "#3d3d3d",
+              border: "1px solid #555",
+              borderRadius: 4,
+              color: "#e0e0e0",
+              cursor: "pointer",
+              fontFamily: "Fira Code VF",
+              fontSize: 12,
+            }}
+          >
+            <FolderOpen size={14} /> Load
+          </button>
+          <button
+            onClick={handleClear}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "6px 12px",
+              backgroundColor: "#3d3d3d",
+              border: "1px solid #555",
+              borderRadius: 4,
+              color: "#e0e0e0",
+              cursor: "pointer",
+              fontFamily: "Fira Code VF",
+              fontSize: 12,
+            }}
+          >
+            <Trash2 size={14} /> Clear
+          </button>
+          <button
+            onClick={handleRemoveAllLocks}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "6px 12px",
+              backgroundColor: "#3d3d3d",
+              border: "1px solid #555",
+              borderRadius: 4,
+              color: "#e0e0e0",
+              cursor: "pointer",
+              fontFamily: "Fira Code VF",
+              fontSize: 12,
+            }}
+          >
+            <Unlock size={14} /> Remove All Locks
+          </button>
+        </div>
+      </div>
       <div
         id="diagram"
         ref={diagramRef}
@@ -434,6 +588,9 @@ function App() {
           >
             <div
               style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
                 fontWeight: "bold",
                 marginBottom: 4,
                 borderBottom: "1px solid #444",
@@ -441,7 +598,14 @@ function App() {
                 color: "#9CDCFE",
               }}
             >
-              {node.label ?? node.id}
+              <span>{node.label ?? node.id}</span>
+              {node.has_pos && (
+                <Lock
+                  size={12}
+                  style={{ cursor: "pointer", color: "#888" }}
+                  onClick={(e) => handleUnlock(node.id, e)}
+                />
+              )}
             </div>
             {node.body_lines.map((line, i) => (
               <div key={i} style={{ fontSize: 11, color: "#aaa" }}>

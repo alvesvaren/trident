@@ -87,6 +87,53 @@ fn find_and_update_group(
     false
 }
 
+/// Remove the position of a class node by ID (unlock it).
+/// Returns true if the class was found and its position was removed.
+pub fn remove_class_position(ast: &mut FileAst, class_id: &str) -> bool {
+    find_and_remove_class_position(&mut ast.items, class_id)
+}
+
+/// Recursively search for a class by ID and remove its position
+fn find_and_remove_class_position(items: &mut [Stmt], class_id: &str) -> bool {
+    for stmt in items {
+        match stmt {
+            Stmt::Class(c) if c.id.0 == class_id => {
+                c.pos = None;
+                return true;
+            }
+            Stmt::Group(g) => {
+                if find_and_remove_class_position(&mut g.items, class_id) {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Remove all positions from all classes and groups in the AST.
+/// This "unlocks" everything for auto-layout.
+pub fn remove_all_positions(ast: &mut FileAst) {
+    remove_all_positions_recursive(&mut ast.items);
+}
+
+/// Recursively remove positions from all items
+fn remove_all_positions_recursive(items: &mut [Stmt]) {
+    for stmt in items {
+        match stmt {
+            Stmt::Class(c) => {
+                c.pos = None;
+            }
+            Stmt::Group(g) => {
+                g.pos = None;
+                remove_all_positions_recursive(&mut g.items);
+            }
+            _ => {}
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
