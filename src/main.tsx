@@ -14,7 +14,7 @@ createRoot(document.getElementById("root")!).render(
 
 if (!import.meta.env.DEV) {
   const init = await import('trident-core').then((module) => module.default);
-  init(wasmUrl).then(() => {
+  (init as any)(wasmUrl).then(() => {
     createRoot(document.getElementById("root")!).render(
       <StrictMode>
         <App />
