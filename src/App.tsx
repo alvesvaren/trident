@@ -134,7 +134,7 @@ function App() {
   }, [result.nodes]);
 
   // Drag state
-  const [dragState, setDragState] = useState<DragState | null>(null);
+  const [dragState, setDragState] = useState<DragState & { currentX: number; currentY: number } | null>(null);
   const diagramRef = useRef<HTMLDivElement>(null);
 
   // Start dragging a node
@@ -151,6 +151,8 @@ function App() {
         startMouseY: e.clientY,
         parentOffsetX: node.parent_offset.x,
         parentOffsetY: node.parent_offset.y,
+        currentX: node.bounds.x,
+        currentY: node.bounds.y,
       });
     },
     []
@@ -161,9 +163,6 @@ function App() {
     (e: React.MouseEvent, group: DiagramGroup, index: number) => {
       e.preventDefault();
       e.stopPropagation();
-      // Groups at the top level have parent offset of (0,0)
-      // For nested groups, we'd need to track their parent too
-      // For now, groups are always at root level in the output
       setDragState({
         type: "group",
         id: group.id,
@@ -172,8 +171,10 @@ function App() {
         startY: group.bounds.y,
         startMouseX: e.clientX,
         startMouseY: e.clientY,
-        parentOffsetX: 0, // Root groups have no parent offset
+        parentOffsetX: 0,
         parentOffsetY: 0,
+        currentX: group.bounds.x,
+        currentY: group.bounds.y,
       });
     },
     []
@@ -184,41 +185,44 @@ function App() {
     (e: React.MouseEvent) => {
       if (!dragState) return;
 
-      // Calculate new world position
       const deltaX = e.clientX - dragState.startMouseX;
       const deltaY = e.clientY - dragState.startMouseY;
-      const newWorldX = Math.round(dragState.startX + deltaX);
-      const newWorldY = Math.round(dragState.startY + deltaY);
 
-      // Convert to local coordinates by subtracting parent offset
-      const newLocalX = newWorldX - dragState.parentOffsetX;
-      const newLocalY = newWorldY - dragState.parentOffsetY;
-
-      // Update code with local position
-      let newCode: string;
-      if (dragState.type === "node") {
-        newCode = trident_core.update_class_pos(code, dragState.id, newLocalX, newLocalY);
-      } else {
-        newCode = trident_core.update_group_pos(
-          code,
-          dragState.id,
-          dragState.groupIndex ?? 0,
-          newLocalX,
-          newLocalY
-        );
-      }
-
-      if (newCode !== code) {
-        setCode(newCode);
-      }
+      setDragState(prev => prev ? ({
+        ...prev,
+        currentX: Math.round(prev.startX + deltaX),
+        currentY: Math.round(prev.startY + deltaY)
+      }) : null);
     },
-    [dragState, code]
+    [dragState]
   );
 
   // Handle mouse up to end drag
   const handleMouseUp = useCallback(() => {
+    if (!dragState) return;
+
+    // Commit final position
+    const newLocalX = dragState.currentX - dragState.parentOffsetX;
+    const newLocalY = dragState.currentY - dragState.parentOffsetY;
+
+    let newCode: string;
+    if (dragState.type === "node") {
+      newCode = trident_core.update_class_pos(code, dragState.id, newLocalX, newLocalY);
+    } else {
+      newCode = trident_core.update_group_pos(
+        code,
+        dragState.id,
+        dragState.groupIndex ?? 0,
+        newLocalX,
+        newLocalY
+      );
+    }
+
+    if (newCode !== code) {
+      setCode(newCode);
+    }
     setDragState(null);
-  }, []);
+  }, [dragState, code]);
 
   // Unlock a node (remove its @pos)
   const handleUnlock = useCallback(
@@ -475,8 +479,19 @@ function App() {
           </defs>
 
           {result.edges?.map((edge, i) => {
-            const fromBounds = nodeMap.get(edge.from);
-            const toBounds = nodeMap.get(edge.to);
+            const fromNode = result.nodes?.find(n => n.id === edge.from);
+            const toNode = result.nodes?.find(n => n.id === edge.to);
+
+            let fromBounds = nodeMap.get(edge.from);
+            let toBounds = nodeMap.get(edge.to);
+
+            if (dragState?.type === "node" && fromNode && dragState.id === fromNode.id) {
+              fromBounds = { ...fromNode.bounds, x: dragState.currentX, y: dragState.currentY };
+            }
+            if (dragState?.type === "node" && toNode && dragState.id === toNode.id) {
+              toBounds = { ...toNode.bounds, x: dragState.currentX, y: dragState.currentY };
+            }
+
             if (!fromBounds || !toBounds) return null;
 
             const fromCenter = getCenter(fromBounds);
@@ -541,93 +556,105 @@ function App() {
         </svg>
 
         {/* Group layer - render behind nodes */}
-        {result.groups?.map((group, index) => (
-          <div
-            key={group.id}
-            style={{
-              position: "absolute",
-              left: group.bounds.x,
-              top: group.bounds.y,
-              width: group.bounds.w,
-              height: group.bounds.h,
-              backgroundColor: "#252525",
-              border: "1px solid #404040",
-              borderRadius: 6,
-              boxSizing: "border-box",
-              cursor: "grab",
-            }}
-            onMouseDown={(e) => startGroupDrag(e, group, index)}
-          >
+        {result.groups?.map((group, index) => {
+          const isDragging = dragState?.type === "group" && dragState.id === group.id;
+          const x = isDragging ? dragState!.currentX : group.bounds.x;
+          const y = isDragging ? dragState!.currentY : group.bounds.y;
+
+          return (
             <div
+              key={group.id}
               style={{
                 position: "absolute",
-                top: -10,
-                left: 8,
+                left: x,
+                top: y,
+                width: group.bounds.w,
+                height: group.bounds.h,
                 backgroundColor: "#252525",
-                padding: "0 6px",
-                fontSize: 11,
-                fontFamily: "Fira Code VF",
-                color: "#888",
-                pointerEvents: "none", // Allow drag from label area
+                border: "1px solid #404040",
+                borderRadius: 6,
+                boxSizing: "border-box",
+                cursor: "grab",
               }}
+              onMouseDown={(e) => startGroupDrag(e, group, index)}
             >
-              {group.id}
+              <div
+                style={{
+                  position: "absolute",
+                  top: -10,
+                  left: 8,
+                  backgroundColor: "#252525",
+                  padding: "0 6px",
+                  fontSize: 11,
+                  fontFamily: "Fira Code VF",
+                  color: "#888",
+                  pointerEvents: "none", // Allow drag from label area
+                }}
+              >
+                {group.id}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {/* Node layer */}
-        {result.nodes?.map((node) => (
-          <div
-            key={node.id}
-            style={{
-              position: "absolute",
-              left: node.bounds.x,
-              top: node.bounds.y,
-              width: node.bounds.w,
-              height: node.bounds.h,
-              backgroundColor: "#2d2d2d",
-              border: "1px solid #555",
-              borderRadius: 4,
-              padding: 8,
-              boxSizing: "border-box",
-              fontFamily: "Fira Code VF",
-              fontSize: 12,
-              color: "#e0e0e0",
-              overflow: "hidden",
-              cursor: "grab",
-              userSelect: "none",
-            }}
-            onMouseDown={(e) => startNodeDrag(e, node)}
-          >
+        {result.nodes?.map((node) => {
+          const isDragging = dragState?.type === "node" && dragState.id === node.id;
+          const x = isDragging ? dragState!.currentX : node.bounds.x;
+          const y = isDragging ? dragState!.currentY : node.bounds.y;
+
+          return (
             <div
+              key={node.id}
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                fontWeight: "bold",
-                marginBottom: 4,
-                borderBottom: "1px solid #444",
-                paddingBottom: 4,
-                color: "#9CDCFE",
+                position: "absolute",
+                left: x,
+                top: y,
+                width: node.bounds.w,
+                height: node.bounds.h,
+                backgroundColor: "#2d2d2d",
+                border: "1px solid #555",
+                borderRadius: 4,
+                padding: 8,
+                boxSizing: "border-box",
+                fontFamily: "Fira Code VF",
+                fontSize: 12,
+                color: "#e0e0e0",
+                overflow: "hidden",
+                cursor: "grab",
+                userSelect: "none",
               }}
+              onMouseDown={(e) => startNodeDrag(e, node)}
             >
-              <span>{node.label ?? node.id}</span>
-              {node.has_pos && (
-                <Lock
-                  size={12}
-                  style={{ cursor: "pointer", color: "#888" }}
-                  onClick={(e) => handleUnlock(node.id, e)}
-                />
-              )}
-            </div>
-            {node.body_lines.map((line, i) => (
-              <div key={i} style={{ fontSize: 11, color: "#aaa" }}>
-                {line}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  fontWeight: "bold",
+                  marginBottom: 4,
+                  borderBottom: "1px solid #444",
+                  paddingBottom: 4,
+                  color: "#9CDCFE",
+                }}
+              >
+                <span>{node.label ?? node.id}</span>
+                {node.has_pos && (
+                  <Lock
+                    size={12}
+                    style={{ cursor: "pointer", color: "#888" }}
+                    onClick={(e) => handleUnlock(node.id, e)}
+                  />
+                )}
               </div>
-            ))}
-          </div>
-        ))}
+              {node.body_lines.map((line, i) => (
+                <div key={i} style={{ fontSize: 11, color: "#aaa" }}>
+                  {line}
+                </div>
+              ))}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

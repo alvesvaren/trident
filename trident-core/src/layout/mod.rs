@@ -84,7 +84,7 @@ impl Default for LayoutConfig {
         Self {
             group_padding: 24,
             gap: 24,
-            max_row_w: 1200,
+            max_row_w: 1000,
             class_size: SizeI { w: 220, h: 120 },
             min_group_size: SizeI { w: 200, h: 120 },
         }
