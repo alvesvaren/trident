@@ -45,7 +45,7 @@ function ZoomControls() {
 }
 
 export function DiagramCanvas({ result, code, onCodeChange }: DiagramCanvasProps) {
-    const { dragState, scaleRef, startNodeDrag, startGroupDrag, handleMouseMove, handleMouseUp } =
+    const { dragState, scaleRef, startNodeDrag, startGroupDrag } =
         useDiagramDrag({ code, onCodeChange });
 
     const handleUnlock = useCallback(
@@ -80,9 +80,6 @@ export function DiagramCanvas({ result, code, onCodeChange }: DiagramCanvasProps
                 >
                     <div
                         className={`min-w-full min-h-full relative ${dragState ? "cursor-grabbing" : ""}`}
-                        onMouseMove={handleMouseMove}
-                        onMouseUp={handleMouseUp}
-                        onMouseLeave={handleMouseUp}
                     >
                         {result.error && (
                             <div className="text-red-500 p-4">{result.error}</div>

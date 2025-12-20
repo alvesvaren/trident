@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import * as trident_core from "trident-core";
 import type { DiagramNode, DiagramGroup, DragState } from "../types/diagram";
 
@@ -12,8 +12,6 @@ interface UseDiagramDragResult {
     scaleRef: React.MutableRefObject<number>;
     startNodeDrag: (e: React.MouseEvent, node: DiagramNode) => void;
     startGroupDrag: (e: React.MouseEvent, group: DiagramGroup, index: number) => void;
-    handleMouseMove: (e: React.MouseEvent) => void;
-    handleMouseUp: () => void;
 }
 
 export function useDiagramDrag({
@@ -22,6 +20,8 @@ export function useDiagramDrag({
 }: UseDiagramDragOptions): UseDiagramDragResult {
     const [dragState, setDragState] = useState<DragState | null>(null);
     const scaleRef = useRef<number>(1);
+    const codeRef = useRef(code);
+    codeRef.current = code;
 
     const startNodeDrag = useCallback((e: React.MouseEvent, node: DiagramNode) => {
         e.preventDefault();
@@ -61,11 +61,11 @@ export function useDiagramDrag({
         []
     );
 
-    const handleMouseMove = useCallback(
-        (e: React.MouseEvent) => {
-            if (!dragState) return;
+    // Use document-level event listeners to prevent dropping when moving fast
+    useEffect(() => {
+        if (!dragState) return;
 
-            // Divide by scale to get correct delta in diagram coordinates
+        const handleMouseMove = (e: MouseEvent) => {
             const scale = scaleRef.current;
             const deltaX = (e.clientX - dragState.startMouseX) / scale;
             const deltaY = (e.clientY - dragState.startMouseY) / scale;
@@ -79,41 +79,54 @@ export function useDiagramDrag({
                     }
                     : null
             );
-        },
-        [dragState]
-    );
+        };
 
-    const handleMouseUp = useCallback(() => {
-        if (!dragState) return;
+        const handleMouseUp = () => {
+            setDragState((currentDrag) => {
+                if (!currentDrag) return null;
 
-        const newLocalX = dragState.currentX - dragState.parentOffsetX;
-        const newLocalY = dragState.currentY - dragState.parentOffsetY;
+                const newLocalX = currentDrag.currentX - currentDrag.parentOffsetX;
+                const newLocalY = currentDrag.currentY - currentDrag.parentOffsetY;
 
-        let newCode: string;
-        if (dragState.type === "node") {
-            newCode = trident_core.update_class_pos(code, dragState.id, newLocalX, newLocalY);
-        } else {
-            newCode = trident_core.update_group_pos(
-                code,
-                dragState.id,
-                dragState.groupIndex ?? 0,
-                newLocalX,
-                newLocalY
-            );
-        }
+                let newCode: string;
+                if (currentDrag.type === "node") {
+                    newCode = trident_core.update_class_pos(
+                        codeRef.current,
+                        currentDrag.id,
+                        newLocalX,
+                        newLocalY
+                    );
+                } else {
+                    newCode = trident_core.update_group_pos(
+                        codeRef.current,
+                        currentDrag.id,
+                        currentDrag.groupIndex ?? 0,
+                        newLocalX,
+                        newLocalY
+                    );
+                }
 
-        if (newCode !== code) {
-            onCodeChange(newCode);
-        }
-        setDragState(null);
-    }, [dragState, code, onCodeChange]);
+                if (newCode !== codeRef.current) {
+                    onCodeChange(newCode);
+                }
+
+                return null;
+            });
+        };
+
+        document.addEventListener("mousemove", handleMouseMove);
+        document.addEventListener("mouseup", handleMouseUp);
+
+        return () => {
+            document.removeEventListener("mousemove", handleMouseMove);
+            document.removeEventListener("mouseup", handleMouseUp);
+        };
+    }, [dragState?.startMouseX, dragState?.startMouseY, dragState?.startX, dragState?.startY, onCodeChange]);
 
     return {
         dragState,
         scaleRef,
         startNodeDrag,
         startGroupDrag,
-        handleMouseMove,
-        handleMouseUp,
     };
 }

@@ -16,28 +16,43 @@ export function EdgeOverlay({ edges, nodes, dragState }: EdgeOverlayProps) {
         return map;
     }, [nodes]);
 
-    // Calculate SVG viewport size based on all nodes
-    const svgSize = useMemo(() => {
+    // Calculate SVG viewport with support for negative coordinates
+    const svgViewport = useMemo(() => {
+        let minX = 0;
+        let minY = 0;
         let maxX = 0;
         let maxY = 0;
+
         nodes.forEach((n) => {
+            minX = Math.min(minX, n.bounds.x);
+            minY = Math.min(minY, n.bounds.y);
             maxX = Math.max(maxX, n.bounds.x + n.bounds.w);
             maxY = Math.max(maxY, n.bounds.y + n.bounds.h);
         });
-        return { width: maxX + 50, height: maxY + 50 };
+
+        // Add padding
+        const padding = 100;
+        return {
+            x: minX - padding,
+            y: minY - padding,
+            width: maxX - minX + padding * 2,
+            height: maxY - minY + padding * 2,
+        };
     }, [nodes]);
 
     return (
         <svg
             style={{
                 position: "absolute",
-                top: 0,
-                left: 0,
+                top: svgViewport.y,
+                left: svgViewport.x,
                 pointerEvents: "none",
                 zIndex: 10,
+                overflow: "visible",
             }}
-            width={svgSize.width}
-            height={svgSize.height}
+            width={svgViewport.width}
+            height={svgViewport.height}
+            viewBox={`${svgViewport.x} ${svgViewport.y} ${svgViewport.width} ${svgViewport.height}`}
         >
             <defs>
                 <marker
