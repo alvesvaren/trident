@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { compile_diagram } from "trident-core";
 
 import Editor from "@monaco-editor/react";
@@ -18,9 +18,67 @@ interface DiagramNode {
   bounds: Bounds;
 }
 
+interface DiagramEdge {
+  from: string;
+  to: string;
+  arrow: string;
+  label: string | null;
+}
+
 interface DiagramOutput {
   nodes?: DiagramNode[];
+  edges?: DiagramEdge[];
   error?: string;
+}
+
+/** Get center of a bounds rectangle */
+function getCenter(b: Bounds): { x: number; y: number } {
+  return { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+}
+
+/** Calculate intersection point of line from center to target with rectangle edge */
+function getEdgePoint(
+  bounds: Bounds,
+  targetX: number,
+  targetY: number
+): { x: number; y: number } {
+  const cx = bounds.x + bounds.w / 2;
+  const cy = bounds.y + bounds.h / 2;
+  const dx = targetX - cx;
+  const dy = targetY - cy;
+
+  if (dx === 0 && dy === 0) return { x: cx, y: cy };
+
+  const halfW = bounds.w / 2;
+  const halfH = bounds.h / 2;
+
+  // Calculate intersection with each edge
+  const tRight = halfW / Math.abs(dx);
+  const tLeft = halfW / Math.abs(dx);
+  const tBottom = halfH / Math.abs(dy);
+  const tTop = halfH / Math.abs(dy);
+
+  let t = Infinity;
+
+  if (dx > 0) t = Math.min(t, tRight);
+  if (dx < 0) t = Math.min(t, tLeft);
+  if (dy > 0) t = Math.min(t, tBottom);
+  if (dy < 0) t = Math.min(t, tTop);
+
+  return {
+    x: cx + dx * t,
+    y: cy + dy * t,
+  };
+}
+
+/** Check if arrow points to the "from" node (left arrows) */
+function isLeftArrow(arrow: string): boolean {
+  return arrow.endsWith("_left");
+}
+
+/** Check if the edge should be dashed */
+function isDashed(arrow: string): boolean {
+  return arrow === "dotted" || arrow.startsWith("dep_");
 }
 
 function App() {
@@ -34,6 +92,24 @@ function App() {
     const end = performance.now();
     console.log(`Time taken to parse: ${end - start} milliseconds`);
   }, [code]);
+
+  // Build a map from node id to bounds for edge rendering
+  const nodeMap = useMemo(() => {
+    const map = new Map<string, Bounds>();
+    result.nodes?.forEach((n) => map.set(n.id, n.bounds));
+    return map;
+  }, [result.nodes]);
+
+  // Calculate SVG viewport size based on all nodes
+  const svgSize = useMemo(() => {
+    let maxX = 0,
+      maxY = 0;
+    result.nodes?.forEach((n) => {
+      maxX = Math.max(maxX, n.bounds.x + n.bounds.w);
+      maxY = Math.max(maxY, n.bounds.y + n.bounds.h);
+    });
+    return { width: maxX + 50, height: maxY + 50 };
+  }, [result.nodes]);
 
   return (
     <div style={{ display: "flex", height: "100vh" }}>
@@ -63,6 +139,141 @@ function App() {
         {result.error && (
           <div style={{ color: "#f44", padding: 16 }}>{result.error}</div>
         )}
+
+        {/* SVG layer for edges */}
+        <svg
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            pointerEvents: "none",
+          }}
+          width={svgSize.width}
+          height={svgSize.height}
+        >
+          <defs>
+            {/* Arrow marker for lines */}
+            <marker
+              id="arrowhead"
+              markerWidth="10"
+              markerHeight="7"
+              refX="9"
+              refY="3.5"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#888" />
+            </marker>
+            {/* Triangle marker for inheritance */}
+            <marker
+              id="triangle"
+              markerWidth="12"
+              markerHeight="10"
+              refX="11"
+              refY="5"
+              orient="auto"
+            >
+              <polygon
+                points="0 0, 12 5, 0 10"
+                fill="none"
+                stroke="#888"
+                strokeWidth="1"
+              />
+            </marker>
+            {/* Diamond marker for aggregate/compose */}
+            <marker
+              id="diamond"
+              markerWidth="12"
+              markerHeight="8"
+              refX="11"
+              refY="4"
+              orient="auto"
+            >
+              <polygon points="0 4, 6 0, 12 4, 6 8" fill="#888" />
+            </marker>
+            <marker
+              id="diamond-empty"
+              markerWidth="12"
+              markerHeight="8"
+              refX="11"
+              refY="4"
+              orient="auto"
+            >
+              <polygon
+                points="0 4, 6 0, 12 4, 6 8"
+                fill="#1e1e1e"
+                stroke="#888"
+                strokeWidth="1"
+              />
+            </marker>
+          </defs>
+
+          {result.edges?.map((edge, i) => {
+            const fromBounds = nodeMap.get(edge.from);
+            const toBounds = nodeMap.get(edge.to);
+            if (!fromBounds || !toBounds) return null;
+
+            const fromCenter = getCenter(fromBounds);
+            const toCenter = getCenter(toBounds);
+
+            // Determine which end gets the arrow
+            const leftArrow = isLeftArrow(edge.arrow);
+            const arrowAtFrom = leftArrow;
+
+            // Calculate edge points at rectangle boundaries
+            const start = getEdgePoint(fromBounds, toCenter.x, toCenter.y);
+            const end = getEdgePoint(toBounds, fromCenter.x, fromCenter.y);
+
+            // Choose marker based on arrow type
+            let markerEnd = "";
+            let markerStart = "";
+            const baseArrow = edge.arrow.replace("_left", "").replace("_right", "");
+
+            if (baseArrow === "extends") {
+              if (arrowAtFrom) markerStart = "url(#triangle)";
+              else markerEnd = "url(#triangle)";
+            } else if (baseArrow === "assoc" || baseArrow === "dep") {
+              if (arrowAtFrom) markerStart = "url(#arrowhead)";
+              else markerEnd = "url(#arrowhead)";
+            } else if (baseArrow === "aggregate") {
+              markerStart = "url(#diamond-empty)";
+            } else if (baseArrow === "compose") {
+              markerStart = "url(#diamond)";
+            }
+
+            const midX = (start.x + end.x) / 2;
+            const midY = (start.y + end.y) / 2;
+
+            return (
+              <g key={i}>
+                <line
+                  x1={start.x}
+                  y1={start.y}
+                  x2={end.x}
+                  y2={end.y}
+                  stroke="#888"
+                  strokeWidth={1.5}
+                  strokeDasharray={isDashed(edge.arrow) ? "5,3" : undefined}
+                  markerEnd={markerEnd}
+                  markerStart={markerStart}
+                />
+                {edge.label && (
+                  <text
+                    x={midX}
+                    y={midY - 6}
+                    fill="#aaa"
+                    fontSize={11}
+                    fontFamily="Fira Code VF"
+                    textAnchor="middle"
+                  >
+                    {edge.label}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+
+        {/* Node layer */}
         {result.nodes?.map((node) => (
           <div
             key={node.id}
@@ -83,17 +294,21 @@ function App() {
               overflow: "hidden",
             }}
           >
-            <div style={{
-              fontWeight: "bold",
-              marginBottom: 4,
-              borderBottom: "1px solid #444",
-              paddingBottom: 4,
-              color: "#9CDCFE",
-            }}>
+            <div
+              style={{
+                fontWeight: "bold",
+                marginBottom: 4,
+                borderBottom: "1px solid #444",
+                paddingBottom: 4,
+                color: "#9CDCFE",
+              }}
+            >
               {node.label ?? node.id}
             </div>
             {node.body_lines.map((line, i) => (
-              <div key={i} style={{ fontSize: 11, color: "#aaa" }}>{line}</div>
+              <div key={i} style={{ fontSize: 11, color: "#aaa" }}>
+                {line}
+              </div>
             ))}
           </div>
         ))}

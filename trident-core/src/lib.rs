@@ -3,6 +3,7 @@ use wasm_bindgen::prelude::*;
 mod parser;
 mod layout;
 use layout::{layout_diagram, LayoutConfig, RectI};
+use parser::Arrow;
 use serde::Serialize;
 use serde_json::to_string;
 
@@ -26,10 +27,35 @@ pub struct NodeOutput {
     pub bounds: RectI,
 }
 
+/// An edge between two nodes
+#[derive(Debug, Clone, Serialize)]
+pub struct EdgeOutput {
+    pub from: String,
+    pub to: String,
+    pub arrow: String,
+    pub label: Option<String>,
+}
+
+fn arrow_to_string(arrow: Arrow) -> String {
+    match arrow {
+        Arrow::ExtendsLeft => "extends_left".to_string(),
+        Arrow::ExtendsRight => "extends_right".to_string(),
+        Arrow::Aggregate => "aggregate".to_string(),
+        Arrow::Compose => "compose".to_string(),
+        Arrow::AssocRight => "assoc_right".to_string(),
+        Arrow::AssocLeft => "assoc_left".to_string(),
+        Arrow::DepRight => "dep_right".to_string(),
+        Arrow::DepLeft => "dep_left".to_string(),
+        Arrow::Line => "line".to_string(),
+        Arrow::Dotted => "dotted".to_string(),
+    }
+}
+
 /// The combined output sent to React
 #[derive(Debug, Clone, Serialize)]
 pub struct DiagramOutput {
     pub nodes: Vec<NodeOutput>,
+    pub edges: Vec<EdgeOutput>,
 }
 
 #[wasm_bindgen]
@@ -50,7 +76,7 @@ pub fn compile_diagram(input: &str) -> String {
     };
     let layout = layout_diagram(&diagram, &LayoutConfig::default());
     
-    // Build a combined output for React
+    // Build nodes
     let nodes: Vec<NodeOutput> = diagram.classes.iter().map(|c| {
         let bounds = layout.class_world_bounds.get(&c.cid).copied().unwrap_or(RectI { x: 0, y: 0, w: 0, h: 0 });
         NodeOutput {
@@ -61,6 +87,18 @@ pub fn compile_diagram(input: &str) -> String {
         }
     }).collect();
     
-    let output = DiagramOutput { nodes };
+    // Build edges
+    let edges: Vec<EdgeOutput> = diagram.edges.iter().map(|e| {
+        let from_id = diagram.classes[e.from.0].id.0.clone();
+        let to_id = diagram.classes[e.to.0].id.0.clone();
+        EdgeOutput {
+            from: from_id,
+            to: to_id,
+            arrow: arrow_to_string(e.arrow),
+            label: e.label.clone(),
+        }
+    }).collect();
+    
+    let output = DiagramOutput { nodes, edges };
     to_string(&output).unwrap()
 }
