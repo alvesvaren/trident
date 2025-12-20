@@ -1,0 +1,16 @@
+.diagram-canvas {
+    flex: 1;
+    position: relative;
+    overflow: auto;
+    background-color: #1e1e1e;
+    height: 100%;
+}
+
+.diagram-canvas-dragging {
+    cursor: grabbing;
+}
+
+.diagram-error {
+    color: #f44;
+    padding: 16px;
+}
