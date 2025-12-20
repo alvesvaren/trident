@@ -36,6 +36,13 @@ pub struct EdgeOutput {
     pub label: Option<String>,
 }
 
+/// A group container
+#[derive(Debug, Clone, Serialize)]
+pub struct GroupOutput {
+    pub id: String,
+    pub bounds: RectI,
+}
+
 fn arrow_to_string(arrow: Arrow) -> String {
     match arrow {
         Arrow::ExtendsLeft => "extends_left".to_string(),
@@ -54,6 +61,7 @@ fn arrow_to_string(arrow: Arrow) -> String {
 /// The combined output sent to React
 #[derive(Debug, Clone, Serialize)]
 pub struct DiagramOutput {
+    pub groups: Vec<GroupOutput>,
     pub nodes: Vec<NodeOutput>,
     pub edges: Vec<EdgeOutput>,
 }
@@ -75,6 +83,18 @@ pub fn compile_diagram(input: &str) -> String {
         }
     };
     let layout = layout_diagram(&diagram, &LayoutConfig::default());
+    
+    // Build groups (only named groups, skip root and anonymous)
+    let groups: Vec<GroupOutput> = diagram.groups.iter()
+        .filter(|g| g.id.is_some() && g.gid != diagram.root)
+        .filter_map(|g| {
+            let bounds = layout.group_world_bounds.get(&g.gid).copied()?;
+            Some(GroupOutput {
+                id: g.id.as_ref()?.0.clone(),
+                bounds,
+            })
+        })
+        .collect();
     
     // Build nodes
     let nodes: Vec<NodeOutput> = diagram.classes.iter().map(|c| {
@@ -99,6 +119,6 @@ pub fn compile_diagram(input: &str) -> String {
         }
     }).collect();
     
-    let output = DiagramOutput { nodes, edges };
+    let output = DiagramOutput { groups, nodes, edges };
     to_string(&output).unwrap()
 }

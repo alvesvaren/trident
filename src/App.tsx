@@ -25,7 +25,13 @@ interface DiagramEdge {
   label: string | null;
 }
 
+interface DiagramGroup {
+  id: string;
+  bounds: Bounds;
+}
+
 interface DiagramOutput {
+  groups?: DiagramGroup[];
   nodes?: DiagramNode[];
   edges?: DiagramEdge[];
   error?: string;
@@ -272,6 +278,39 @@ function App() {
             );
           })}
         </svg>
+
+        {/* Group layer - render behind nodes */}
+        {result.groups?.map((group) => (
+          <div
+            key={group.id}
+            style={{
+              position: "absolute",
+              left: group.bounds.x,
+              top: group.bounds.y,
+              width: group.bounds.w,
+              height: group.bounds.h,
+              backgroundColor: "#252525",
+              border: "1px solid #404040",
+              borderRadius: 6,
+              boxSizing: "border-box",
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                top: -10,
+                left: 8,
+                backgroundColor: "#252525",
+                padding: "0 6px",
+                fontSize: 11,
+                fontFamily: "Fira Code VF",
+                color: "#888",
+              }}
+            >
+              {group.id}
+            </div>
+          </div>
+        ))}
 
         {/* Node layer */}
         {result.nodes?.map((node) => (
