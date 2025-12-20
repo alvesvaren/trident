@@ -1,0 +1,134 @@
+// sddMonaco.ts
+// Monaco language support for SDD v0.0.1 (as per your parser):
+// - keywords: classDiagram, group, class
+// - comments: %% line comment
+// - strings: "..." (no escapes)
+// - relations: support arrow tokens even without spaces (A-->B, A<|--B:label)
+// - directive: @pos: (x, y)
+// - braces: { }
+// - identifiers: [A-Za-z_][A-Za-z0-9_]*
+//
+// Usage with @monaco-editor/react is shown below.
+
+import type * as monaco from "monaco-editor";
+
+export const TRIDENT_ID = "trident";
+
+export function registerSddLanguage(monacoApi: typeof monaco) {
+  // 1) Register language
+  monacoApi.languages.register({ id: TRIDENT_ID });
+
+  // 2) Language configuration (brackets, comments, auto-closing, etc.)
+  monacoApi.languages.setLanguageConfiguration(TRIDENT_ID, {
+    comments: {
+      lineComment: "%%",
+    },
+    brackets: [
+      ["{", "}"],
+      ["(", ")"],
+    ],
+    autoClosingPairs: [
+      { open: "{", close: "}" },
+      { open: "(", close: ")" },
+      { open: '"', close: '"' },
+    ],
+    surroundingPairs: [
+      { open: "{", close: "}" },
+      { open: "(", close: ")" },
+      { open: '"', close: '"' },
+    ],
+    folding: {
+      offSide: false,
+      markers: {
+        start: new RegExp("^\\s*(group|class)\\b.*\\{\\s*$"),
+        end: new RegExp("^\\s*}\\s*$"),
+      },
+    },
+  });
+
+  // 3) Monarch tokenizer
+  monacoApi.languages.setMonarchTokensProvider(TRIDENT_ID, {
+    defaultToken: "",
+    tokenPostfix: ".sdd",
+
+    keywords: ["classDiagram", "group", "class"],
+
+    // Arrow tokens (longest first)
+    arrows: [
+      "<|--",
+      "--|>",
+      "..>",
+      "<..",
+      "---",
+      "-->",
+      "<--",
+      "o--",
+      "*--",
+      "..",
+    ],
+
+    tokenizer: {
+      root: [
+        // line comment
+        [/%%.*$/, "comment"],
+
+        // keywords
+        [/\bclassDiagram\b/, "keyword"],
+        [/\bgroup\b/, "keyword"],
+        [/\bclass\b/, "keyword"],
+
+        // directive (currently only @pos:)
+        [/[@]pos:/, "keyword"],
+
+        // braces / parens
+        [/[{}]/, "@brackets"],
+        [/[()]/, "@brackets"],
+
+        // numbers (for @pos coords)
+        [/-?\d+/, "number"],
+
+        // strings (no escapes per v0.0.1)
+        [/"/, { token: "string.quote", bracket: "@open", next: "@string" }],
+
+        // arrow operators (including when embedded in A-->B)
+        // We highlight them anywhere in the line; Monaco will match mid-token.
+        [/<\|--|--\|>|\.\.>|<\.\.|---|-->|<--|o--|\*--|\.\./, "operator"],
+
+        // label delimiter in relations (A-->B:label)
+        [/:/, "delimiter"],
+
+        // identifiers
+        [/[A-Za-z_][A-Za-z0-9_]*/, "identifier"],
+
+        // commas
+        [/\,/, "delimiter"],
+
+        // whitespace
+        [/\s+/, "white"],
+      ],
+
+      string: [
+        [/[^"]+/, "string"],
+        [/"/, { token: "string.quote", bracket: "@close", next: "@pop" }],
+      ],
+    },
+  });
+
+  monacoApi.editor.defineTheme("trident-dark", {
+    base: "vs-dark",
+    inherit: true,
+    rules: [
+      { token: "keyword", foreground: "C586C0" },
+      { token: "comment", foreground: "777777" },
+      { token: "string", foreground: "CE9178" },
+      { token: "number", foreground: "B5CEA8" },
+      { token: "operator", foreground: "FFFFFF" },
+      { token: "delimiter", foreground: "D4D4D4" },
+      { token: "identifier", foreground: "9CDCFE" },
+    ],
+    colors: {
+        // Text color
+        "editor.foreground": "#FF3333",
+    },
+  });
+}

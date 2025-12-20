@@ -1,0 +1,462 @@
+// sdd_layout.rs
+//
+// Super simple deterministic pipeline layouter for Diagram (from sdd_compile.rs).
+//
+// Goals:
+// - Deterministic: no randomness, no time budgets
+// - Manual + auto: any node/group with pos is fixed (local to parent)
+// - Deepest-first: layout children, then treat child groups as boxes
+// - Simple packing: place free items in rows (left-to-right, then wrap)
+// - No overlap (in local coordinates)
+// - Produces local positions for ALL groups/classes (fills in pos=None)
+//
+// This is intentionally "baseline". It is easy to replace later with smarter heuristics.
+//
+// Assumptions:
+// - You have fixed sizes available for nodes/groups.
+//   For v0.0.1, we provide SizeModel with constant sizes.
+// - Group bbox is derived from children, with padding.
+//
+// Output:
+// - LayoutResult with world positions + sizes + group bboxes.
+
+use std::collections::HashMap;
+
+use crate::parser::{PointI, Diagram, GroupId, ClassId};
+use serde::{Serialize};
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize)]
+pub struct SizeI {
+    pub w: i32,
+    pub h: i32,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize)]
+pub struct RectI {
+    pub x: i32,
+    pub y: i32,
+    pub w: i32,
+    pub h: i32,
+}
+
+impl RectI {
+    pub fn right(&self) -> i32 { self.x + self.w }
+    pub fn bottom(&self) -> i32 { self.y + self.h }
+
+    pub fn overlaps(&self, other: &RectI) -> bool {
+        self.x < other.right()
+            && self.right() > other.x
+            && self.y < other.bottom()
+            && self.bottom() > other.y
+    }
+
+    pub fn union(&self, other: &RectI) -> RectI {
+        let x0 = self.x.min(other.x);
+        let y0 = self.y.min(other.y);
+        let x1 = self.right().max(other.right());
+        let y1 = self.bottom().max(other.bottom());
+        RectI { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LayoutConfig {
+    /// Padding inside groups.
+    pub group_padding: i32,
+    /// Spacing between siblings during packing.
+    pub gap: i32,
+    /// Max row width before wrapping. Small graphs can ignore.
+    pub max_row_w: i32,
+    /// Size for classes (v0.0.1: constant).
+    pub class_size: SizeI,
+    /// Minimum size for groups (even if empty).
+    pub min_group_size: SizeI,
+}
+
+impl Default for LayoutConfig {
+    fn default() -> Self {
+        Self {
+            group_padding: 24,
+            gap: 24,
+            max_row_w: 1200,
+            class_size: SizeI { w: 220, h: 120 },
+            min_group_size: SizeI { w: 200, h: 120 },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LayoutResult {
+    /// Local positions (relative to parent group) for all groups/classes.
+    pub group_local_pos: HashMap<GroupId, PointI>,
+    pub class_local_pos: HashMap<ClassId, PointI>,
+
+    /// World positions for all groups/classes (after accumulation).
+    pub group_world_pos: HashMap<GroupId, PointI>,
+    pub class_world_pos: HashMap<ClassId, PointI>,
+
+    /// Group bounds in world coordinates (including padding).
+    pub group_world_bounds: HashMap<GroupId, RectI>,
+
+    /// Class bounds in world coordinates.
+    pub class_world_bounds: HashMap<ClassId, RectI>,
+}
+
+pub fn layout_diagram(diagram: &Diagram, cfg: &LayoutConfig) -> LayoutResult {
+    // We'll fill these in for all nodes. Root is fixed at (0,0) local/world.
+    let mut group_local_pos: HashMap<GroupId, PointI> = HashMap::new();
+    let mut class_local_pos: HashMap<ClassId, PointI> = HashMap::new();
+
+    group_local_pos.insert(diagram.root, PointI { x: 0, y: 0 });
+
+    // Layout groups bottom-up (children first). Our compiler creates parents before children,
+    // but for layout we want post-order traversal.
+    let post = post_order_groups(diagram);
+
+    // We also need per-group child sizes during packing.
+    let mut group_local_bounds: HashMap<GroupId, RectI> = HashMap::new();
+
+    // First pass: compute local positions for everything, and local bounds for groups.
+    for gid in post {
+        let g = &diagram.groups[gid.0];
+
+        // Determine this group's own local position:
+        // - If constrained (pos present), respect it.
+        // - Else if root, it's already (0,0).
+        // - Else default (0,0) for now (parent will place it).
+        if gid != diagram.root {
+            let p = g.pos.unwrap_or(PointI { x: 0, y: 0 });
+            group_local_pos.insert(gid, p);
+        }
+
+        // Lay out children within this group in LOCAL coordinates.
+        // Child classes: fixed if diagram.classes[cid].pos is Some
+        // Child groups: fixed if their pos is Some
+        // Free items are packed in rows.
+        layout_group_children(
+            diagram,
+            gid,
+            cfg,
+            &mut group_local_pos,
+            &mut class_local_pos,
+            &group_local_bounds, // contains bounds for child groups already
+        );
+
+        // After children placed, compute this group's local bounds (container box).
+        let bounds = compute_group_local_bounds(
+            diagram,
+            gid,
+            cfg,
+            &group_local_pos,
+            &class_local_pos,
+            &group_local_bounds,
+        );
+        group_local_bounds.insert(gid, bounds);
+    }
+
+    // Second pass: accumulate world positions and compute world bounds.
+    let mut group_world_pos: HashMap<GroupId, PointI> = HashMap::new();
+    let mut class_world_pos: HashMap<ClassId, PointI> = HashMap::new();
+    let mut group_world_bounds: HashMap<GroupId, RectI> = HashMap::new();
+    let mut class_world_bounds: HashMap<ClassId, RectI> = HashMap::new();
+
+    group_world_pos.insert(diagram.root, PointI { x: 0, y: 0 });
+
+    // Traverse groups in pre-order so parents have world pos before children.
+    let pre = pre_order_groups(diagram);
+
+    for gid in pre {
+        let g_local = *group_local_pos.get(&gid).unwrap_or(&PointI { x: 0, y: 0 });
+        let g_world = if gid == diagram.root {
+            PointI { x: 0, y: 0 }
+        } else {
+            let parent = diagram.groups[gid.0].parent.expect("non-root group must have parent");
+            let pw = *group_world_pos.get(&parent).unwrap();
+            PointI { x: pw.x + g_local.x, y: pw.y + g_local.y }
+        };
+
+        group_world_pos.insert(gid, g_world);
+
+        // Convert local bounds -> world bounds
+        let lb = *group_local_bounds.get(&gid).unwrap();
+        let wb = RectI { x: g_world.x + lb.x, y: g_world.y + lb.y, w: lb.w, h: lb.h };
+        group_world_bounds.insert(gid, wb);
+
+        // Classes directly in this group
+        for &cid in &diagram.groups[gid.0].children_classes {
+            let c_local = *class_local_pos.get(&cid).unwrap_or(&PointI { x: 0, y: 0 });
+            let c_world = PointI { x: g_world.x + c_local.x, y: g_world.y + c_local.y };
+            class_world_pos.insert(cid, c_world);
+
+            let sz = cfg.class_size;
+            class_world_bounds.insert(cid, RectI { x: c_world.x, y: c_world.y, w: sz.w, h: sz.h });
+        }
+    }
+
+    LayoutResult {
+        group_local_pos,
+        class_local_pos,
+        group_world_pos,
+        class_world_pos,
+        group_world_bounds,
+        class_world_bounds,
+    }
+}
+
+/// Layout direct children (classes + groups) of `gid` in LOCAL coordinates.
+fn layout_group_children(
+    diagram: &Diagram,
+    gid: GroupId,
+    cfg: &LayoutConfig,
+    group_local_pos: &mut HashMap<GroupId, PointI>,
+    class_local_pos: &mut HashMap<ClassId, PointI>,
+    group_local_bounds: &HashMap<GroupId, RectI>,
+) {
+    let g = &diagram.groups[gid.0];
+
+    // Collect fixed and free children as "items" with size and setter closures.
+    #[derive(Clone)]
+    enum Item {
+        ChildGroup(GroupId),
+        ChildClass(ClassId),
+    }
+
+    let mut fixed: Vec<Item> = Vec::new();
+    let mut free: Vec<Item> = Vec::new();
+
+    // Child groups
+    for &cgid in &g.children_groups {
+        let child = &diagram.groups[cgid.0];
+        if child.pos.is_some() {
+            fixed.push(Item::ChildGroup(cgid));
+        } else {
+            free.push(Item::ChildGroup(cgid));
+        }
+    }
+
+    // Child classes
+    for &cid in &g.children_classes {
+        let c = &diagram.classes[cid.0];
+        if c.pos.is_some() {
+            fixed.push(Item::ChildClass(cid));
+        } else {
+            free.push(Item::ChildClass(cid));
+        }
+    }
+
+    // Assign fixed local positions
+    for it in fixed {
+        match it {
+            Item::ChildGroup(cgid) => {
+                let p = diagram.groups[cgid.0].pos.unwrap();
+                group_local_pos.insert(cgid, p);
+            }
+            Item::ChildClass(cid) => {
+                let p = diagram.classes[cid.0].pos.unwrap();
+                class_local_pos.insert(cid, p);
+            }
+        }
+    }
+
+    // Pack free items in rows, avoiding overlaps with fixed.
+    // Simple deterministic packing:
+    // - Start at (padding, padding)
+    // - Place L->R with gap, wrap when row exceeds max_row_w
+    // - If collision with an existing item, shift right by gap until clear, then wrap.
+    let mut placed_rects: Vec<RectI> = Vec::new();
+
+    // Seed with fixed rects so we avoid them
+    seed_fixed_rects(diagram, gid, cfg, group_local_pos, class_local_pos, group_local_bounds, &mut placed_rects);
+
+    let mut cursor_x = cfg.group_padding;
+    let mut cursor_y = cfg.group_padding;
+    let mut row_h = 0;
+
+    for it in free {
+        let (sz, set_pos) = match it {
+            Item::ChildGroup(cgid) => {
+                // Use the already computed bounds for the child group as its size.
+                // If not present (empty group before its bounds computed), fall back.
+                let lb = group_local_bounds.get(&cgid).copied().unwrap_or(RectI {
+                    x: 0,
+                    y: 0,
+                    w: cfg.min_group_size.w,
+                    h: cfg.min_group_size.h,
+                });
+                let sz = SizeI { w: lb.w, h: lb.h };
+                let setter = move |p: PointI, group_local_pos: &mut HashMap<GroupId, PointI>| {
+                    group_local_pos.insert(cgid, p);
+                };
+                (sz, SetPos::Group(setter))
+            }
+            Item::ChildClass(cid) => {
+                let sz = cfg.class_size;
+                let setter = move |p: PointI, class_local_pos: &mut HashMap<ClassId, PointI>| {
+                    class_local_pos.insert(cid, p);
+                };
+                (sz, SetPos::Class(setter))
+            }
+        };
+
+        // Wrap if needed
+        if cursor_x + sz.w > cfg.max_row_w {
+            cursor_x = cfg.group_padding;
+            cursor_y += row_h + cfg.gap;
+            row_h = 0;
+        }
+
+        // Find first non-overlapping position by shifting right, then wrap.
+        let mut x = cursor_x;
+        let mut y = cursor_y;
+
+        loop {
+            let candidate = RectI { x, y, w: sz.w, h: sz.h };
+            if !placed_rects.iter().any(|r| r.overlaps(&candidate)) {
+                // Place it
+                match &set_pos {
+                    SetPos::Group(f) => f(PointI { x, y }, group_local_pos),
+                    SetPos::Class(f) => f(PointI { x, y }, class_local_pos),
+                }
+                placed_rects.push(candidate);
+
+                // Advance cursor
+                cursor_x = x + sz.w + cfg.gap;
+                row_h = row_h.max(sz.h);
+                break;
+            }
+
+            x += cfg.gap;
+            if x + sz.w > cfg.max_row_w {
+                // wrap
+                x = cfg.group_padding;
+                y += row_h + cfg.gap;
+                row_h = 0.max(row_h); // keep stable
+            }
+        }
+    }
+}
+
+enum SetPos<Fg, Fc> {
+    Group(Fg),
+    Class(Fc),
+}
+
+/// Adds rectangles for already-fixed children so free items won't overlap them.
+fn seed_fixed_rects(
+    diagram: &Diagram,
+    gid: GroupId,
+    cfg: &LayoutConfig,
+    group_local_pos: &HashMap<GroupId, PointI>,
+    class_local_pos: &HashMap<ClassId, PointI>,
+    group_local_bounds: &HashMap<GroupId, RectI>,
+    out: &mut Vec<RectI>,
+) {
+    let g = &diagram.groups[gid.0];
+
+    // fixed child groups
+    for &cgid in &g.children_groups {
+        if diagram.groups[cgid.0].pos.is_some() {
+            let p = *group_local_pos.get(&cgid).unwrap();
+            let lb = group_local_bounds.get(&cgid).copied().unwrap_or(RectI {
+                x: 0,
+                y: 0,
+                w: cfg.min_group_size.w,
+                h: cfg.min_group_size.h,
+            });
+            out.push(RectI { x: p.x, y: p.y, w: lb.w, h: lb.h });
+        }
+    }
+
+    // fixed child classes
+    for &cid in &g.children_classes {
+        if diagram.classes[cid.0].pos.is_some() {
+            let p = *class_local_pos.get(&cid).unwrap();
+            let sz = cfg.class_size;
+            out.push(RectI { x: p.x, y: p.y, w: sz.w, h: sz.h });
+        }
+    }
+}
+
+/// Compute a group's container bounds in LOCAL coordinates, based on children.
+/// This includes padding. If group has no children, returns min_group_size at (0,0).
+fn compute_group_local_bounds(
+    diagram: &Diagram,
+    gid: GroupId,
+    cfg: &LayoutConfig,
+    group_local_pos: &HashMap<GroupId, PointI>,
+    class_local_pos: &HashMap<ClassId, PointI>,
+    group_local_bounds: &HashMap<GroupId, RectI>,
+) -> RectI {
+    let g = &diagram.groups[gid.0];
+
+    let mut any = false;
+    let mut bb: RectI = RectI { x: 0, y: 0, w: 0, h: 0 };
+
+    // include child groups
+    for &cgid in &g.children_groups {
+        let p = *group_local_pos.get(&cgid).unwrap_or(&PointI { x: 0, y: 0 });
+        let lb = group_local_bounds.get(&cgid).copied().unwrap_or(RectI {
+            x: 0,
+            y: 0,
+            w: cfg.min_group_size.w,
+            h: cfg.min_group_size.h,
+        });
+        let r = RectI { x: p.x, y: p.y, w: lb.w, h: lb.h };
+        bb = if any { bb.union(&r) } else { any = true; r };
+    }
+
+    // include child classes
+    for &cid in &g.children_classes {
+        let p = *class_local_pos.get(&cid).unwrap_or(&PointI { x: 0, y: 0 });
+        let sz = cfg.class_size;
+        let r = RectI { x: p.x, y: p.y, w: sz.w, h: sz.h };
+        bb = if any { bb.union(&r) } else { any = true; r };
+    }
+
+    if !any {
+        // Empty group box
+        return RectI {
+            x: 0,
+            y: 0,
+            w: cfg.min_group_size.w,
+            h: cfg.min_group_size.h,
+        };
+    }
+
+    // Expand by padding on all sides
+    RectI {
+        x: bb.x - cfg.group_padding,
+        y: bb.y - cfg.group_padding,
+        w: bb.w + 2 * cfg.group_padding,
+        h: bb.h + 2 * cfg.group_padding,
+    }
+}
+
+/// Post-order group traversal: children before parent.
+/// Deterministic order: respects diagram.groups[gid].children_groups order.
+fn post_order_groups(diagram: &Diagram) -> Vec<GroupId> {
+    fn dfs(diagram: &Diagram, gid: GroupId, out: &mut Vec<GroupId>) {
+        let g = &diagram.groups[gid.0];
+        for &c in &g.children_groups {
+            dfs(diagram, c, out);
+        }
+        out.push(gid);
+    }
+    let mut out = Vec::new();
+    dfs(diagram, diagram.root, &mut out);
+    out
+}
+
+/// Pre-order group traversal: parent before children.
+fn pre_order_groups(diagram: &Diagram) -> Vec<GroupId> {
+    fn dfs(diagram: &Diagram, gid: GroupId, out: &mut Vec<GroupId>) {
+        out.push(gid);
+        let g = &diagram.groups[gid.0];
+        for &c in &g.children_groups {
+            dfs(diagram, c, out);
+        }
+    }
+    let mut out = Vec::new();
+    dfs(diagram, diagram.root, &mut out);
+    out
+}
