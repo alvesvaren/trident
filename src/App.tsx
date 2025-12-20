@@ -146,13 +146,14 @@ function App() {
           <div style={{ color: "#f44", padding: 16 }}>{result.error}</div>
         )}
 
-        {/* SVG layer for edges */}
+        {/* SVG layer for edges - render on top of groups */}
         <svg
           style={{
             position: "absolute",
             top: 0,
             left: 0,
             pointerEvents: "none",
+            zIndex: 10,
           }}
           width={svgSize.width}
           height={svgSize.height}

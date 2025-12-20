@@ -1,21 +1,19 @@
 // sdd_layout.rs
 //
-// Super simple deterministic pipeline layouter for Diagram (from sdd_compile.rs).
+// Graph-driven deterministic layouter for Diagram.
 //
 // Goals:
 // - Deterministic: no randomness, no time budgets
 // - Manual + auto: any node/group with pos is fixed (local to parent)
 // - Deepest-first: layout children, then treat child groups as boxes
-// - Simple packing: place free items in rows (left-to-right, then wrap)
+// - Graph-driven placement: place connected nodes near each other
 // - No overlap (in local coordinates)
 // - Produces local positions for ALL groups/classes (fills in pos=None)
 //
-// This is intentionally "baseline". It is easy to replace later with smarter heuristics.
-//
-// Assumptions:
-// - You have fixed sizes available for nodes/groups.
-//   For v0.0.1, we provide SizeModel with constant sizes.
-// - Group bbox is derived from children, with padding.
+// Submodules:
+// - spatial_grid: O(1) overlap detection
+// - adjacency: edge weight computation
+// - placement: graph-driven placement algorithm
 //
 // Output:
 // - LayoutResult with world positions + sizes + group bboxes.
@@ -23,7 +21,15 @@
 use std::collections::HashMap;
 
 use crate::parser::{PointI, Diagram, GroupId, ClassId};
-use serde::{Serialize};
+use serde::Serialize;
+
+mod spatial_grid;
+mod adjacency;
+mod placement;
+
+use adjacency::Adjacency;
+use placement::layout_group_children_graph_driven;
+
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize)]
 pub struct SizeI {
@@ -109,6 +115,9 @@ pub fn layout_diagram(diagram: &Diagram, cfg: &LayoutConfig) -> LayoutResult {
 
     group_local_pos.insert(diagram.root, PointI { x: 0, y: 0 });
 
+    // Build adjacency from edges for graph-driven placement
+    let adjacency = Adjacency::from_diagram(diagram);
+
     // Layout groups bottom-up (children first). Our compiler creates parents before children,
     // but for layout we want post-order traversal.
     let post = post_order_groups(diagram);
@@ -129,14 +138,13 @@ pub fn layout_diagram(diagram: &Diagram, cfg: &LayoutConfig) -> LayoutResult {
             group_local_pos.insert(gid, p);
         }
 
-        // Lay out children within this group in LOCAL coordinates.
-        // Child classes: fixed if diagram.classes[cid].pos is Some
-        // Child groups: fixed if their pos is Some
-        // Free items are packed in rows.
-        layout_group_children(
+        // Lay out children within this group using graph-driven placement.
+        // Connected nodes will be placed closer together.
+        layout_group_children_graph_driven(
             diagram,
             gid,
             cfg,
+            &adjacency,
             &mut group_local_pos,
             &mut class_local_pos,
             &group_local_bounds, // contains bounds for child groups already
