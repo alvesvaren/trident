@@ -88,14 +88,48 @@ pub fn layout_group_children_graph_driven(
     free_classes.sort_by_key(|cid| diagram.classes[cid.0].order);
     free_groups.sort_by_key(|gid| diagram.groups[gid.0].order);
 
-    // Place free classes using graph-driven algorithm
+    // 1. Place free groups FIRST so their positions are known
+    place_free_groups(
+        diagram,
+        &free_groups,
+        cfg,
+        &mut spatial,
+        group_local_pos,
+        &mut placed_groups,
+        group_local_bounds,
+    );
+
+    // 2. Build context for class placement: include nodes inside placed groups (projected to current coords)
+    // This allows root classes to place themselves near the groups they connect to.
+    let mut context_placed_classes = placed_classes.clone();
+    let mut context_class_positions = class_positions.clone();
+
+    // Add all nodes from all placed child groups to the context
+    for &child_gid in &placed_groups {
+        if let Some(group_pos) = group_local_pos.get(&child_gid) {
+             // For each class in this child group
+             for &child_cid in &diagram.groups[child_gid.0].children_classes {
+                 if let Some(child_local_pos) = class_local_pos.get(&child_cid) {
+                     // Project position to current group coordinates
+                     let projected_pos = PointI {
+                         x: group_pos.x + child_local_pos.x,
+                         y: group_pos.y + child_local_pos.y,
+                     };
+                     context_placed_classes.insert(child_cid);
+                     context_class_positions.insert(child_cid, projected_pos);
+                 }
+             }
+        }
+    }
+
+    // 3. Place free classes using graph-driven algorithm
     let mut pending_classes: Vec<ClassId> = free_classes.clone();
 
     while !pending_classes.is_empty() {
-        // Pick next node: highest edge weight to placed nodes, tie-break by order
+        // Pick next node based on context
         let next_idx = pick_next_class(
             &pending_classes,
-            &placed_classes,
+            &context_placed_classes, // Use context with projected nodes
             adjacency,
             diagram,
         );
@@ -107,10 +141,10 @@ pub fn layout_group_children_graph_driven(
         // Generate candidate positions
         let candidates = generate_candidates(
             next_cid,
-            &class_positions,
+            &context_class_positions, // Use context positions
             adjacency,
             cfg,
-            &placed_classes,
+            &context_placed_classes,
         );
 
         // Find best non-overlapping candidate
@@ -119,7 +153,7 @@ pub fn layout_group_children_graph_driven(
             sz,
             &spatial,
             next_cid,
-            &class_positions,
+            &context_class_positions,
             adjacency,
             weights,
             cfg,
@@ -130,19 +164,11 @@ pub fn layout_group_children_graph_driven(
         class_positions.insert(next_cid, pos);
         placed_classes.insert(next_cid);
         spatial.insert(RectI { x: pos.x, y: pos.y, w: sz.w, h: sz.h });
-    }
 
-    // Place free groups using similar approach
-    // For now, use simpler group placement based on inter-group edges
-    place_free_groups(
-        diagram,
-        &free_groups,
-        cfg,
-        &mut spatial,
-        group_local_pos,
-        &mut placed_groups,
-        group_local_bounds,
-    );
+        // Also update context for subsequent nodes
+        context_placed_classes.insert(next_cid);
+        context_class_positions.insert(next_cid, pos);
+    }
 
     // Optimization pass: try to improve positions (compact and reduce edge lengths)
     optimize_node_positions(
