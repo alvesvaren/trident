@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { compile_diagram } from "trident-core";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { compile_diagram, update_class_pos, update_group_pos } from "trident-core";
 
 import Editor from "@monaco-editor/react";
 import { registerSddLanguage } from "./syntax";
@@ -35,6 +35,17 @@ interface DiagramOutput {
   nodes?: DiagramNode[];
   edges?: DiagramEdge[];
   error?: string;
+}
+
+/** Drag state for tracking node/group dragging */
+interface DragState {
+  type: "node" | "group";
+  id: string;
+  groupIndex?: number; // For anonymous groups
+  startX: number; // Original position of element
+  startY: number;
+  startMouseX: number; // Mouse position at drag start
+  startMouseY: number;
 }
 
 /** Get center of a bounds rectangle */
@@ -117,6 +128,82 @@ function App() {
     return { width: maxX + 50, height: maxY + 50 };
   }, [result.nodes]);
 
+  // Drag state
+  const [dragState, setDragState] = useState<DragState | null>(null);
+  const diagramRef = useRef<HTMLDivElement>(null);
+
+  // Start dragging a node
+  const startNodeDrag = useCallback(
+    (e: React.MouseEvent, node: DiagramNode) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragState({
+        type: "node",
+        id: node.id,
+        startX: node.bounds.x,
+        startY: node.bounds.y,
+        startMouseX: e.clientX,
+        startMouseY: e.clientY,
+      });
+    },
+    []
+  );
+
+  // Start dragging a group
+  const startGroupDrag = useCallback(
+    (e: React.MouseEvent, group: DiagramGroup, index: number) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragState({
+        type: "group",
+        id: group.id,
+        groupIndex: index,
+        startX: group.bounds.x,
+        startY: group.bounds.y,
+        startMouseX: e.clientX,
+        startMouseY: e.clientY,
+      });
+    },
+    []
+  );
+
+  // Handle mouse move during drag
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (!dragState) return;
+
+      // Calculate new position
+      const deltaX = e.clientX - dragState.startMouseX;
+      const deltaY = e.clientY - dragState.startMouseY;
+      const newX = Math.round(dragState.startX + deltaX);
+      const newY = Math.round(dragState.startY + deltaY);
+
+      // Update code with new position
+      let newCode: string;
+      if (dragState.type === "node") {
+        newCode = update_class_pos(code, dragState.id, newX, newY);
+      } else {
+        newCode = update_group_pos(
+          code,
+          dragState.id,
+          dragState.groupIndex ?? 0,
+          newX,
+          newY
+        );
+      }
+
+      if (newCode !== code) {
+        setCode(newCode);
+      }
+    },
+    [dragState, code]
+  );
+
+  // Handle mouse up to end drag
+  const handleMouseUp = useCallback(() => {
+    setDragState(null);
+  }, []);
+
   return (
     <div style={{ display: "flex", height: "100vh" }}>
       <Editor
@@ -135,12 +222,17 @@ function App() {
       />
       <div
         id="diagram"
+        ref={diagramRef}
         style={{
           flex: 1,
           position: "relative",
           overflow: "auto",
           backgroundColor: "#1e1e1e",
+          cursor: dragState ? "grabbing" : "default",
         }}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
       >
         {result.error && (
           <div style={{ color: "#f44", padding: 16 }}>{result.error}</div>
@@ -281,7 +373,7 @@ function App() {
         </svg>
 
         {/* Group layer - render behind nodes */}
-        {result.groups?.map((group) => (
+        {result.groups?.map((group, index) => (
           <div
             key={group.id}
             style={{
@@ -294,7 +386,9 @@ function App() {
               border: "1px solid #404040",
               borderRadius: 6,
               boxSizing: "border-box",
+              cursor: "grab",
             }}
+            onMouseDown={(e) => startGroupDrag(e, group, index)}
           >
             <div
               style={{
@@ -306,6 +400,7 @@ function App() {
                 fontSize: 11,
                 fontFamily: "Fira Code VF",
                 color: "#888",
+                pointerEvents: "none", // Allow drag from label area
               }}
             >
               {group.id}
@@ -332,7 +427,10 @@ function App() {
               fontSize: 12,
               color: "#e0e0e0",
               overflow: "hidden",
+              cursor: "grab",
+              userSelect: "none",
             }}
+            onMouseDown={(e) => startNodeDrag(e, node)}
           >
             <div
               style={{

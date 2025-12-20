@@ -1,4 +1,20 @@
-use serde::{Serialize};
+use serde::Serialize;
+
+/// Source location span for code generation
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Span {
+    pub start_line: usize,
+    pub end_line: usize,
+}
+
+/// A comment line, preserving exact whitespace
+#[derive(Debug, Clone, Serialize)]
+pub struct CommentAst {
+    /// The prefix before %% (whitespace/newlines preserved)
+    pub prefix: String,
+    /// The text after %% (including any leading space)
+    pub text: String,
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FileAst {
@@ -10,6 +26,7 @@ pub enum Stmt {
     Group(GroupAst),
     Class(ClassAst),
     Relation(RelationAst),
+    Comment(CommentAst),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
@@ -28,6 +45,8 @@ pub struct GroupAst {
     /// local position relative to closest parent group (or root)
     pub pos: Option<PointI>,
     pub items: Vec<Stmt>,
+    /// Source span for round-tripping
+    pub span: Option<Span>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -38,6 +57,8 @@ pub struct ClassAst {
     pub pos: Option<PointI>,
     /// opaque lines inside class block (renderer decides)
     pub body_lines: Vec<String>,
+    /// Source span for round-tripping
+    pub span: Option<Span>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -46,6 +67,8 @@ pub struct RelationAst {
     pub arrow: Arrow,
     pub to: Ident,
     pub label: Option<String>,
+    /// Source span for round-tripping
+    pub span: Option<Span>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize)]

@@ -19,6 +19,7 @@
 // - Relation endpoints must be IDENT (no qualification yet)
 
 use crate::parser::types::*;
+use crate::parser::types::{CommentAst, Span};
 use std::fmt;
 
 impl Arrow {
@@ -99,6 +100,40 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Get the raw line (including comment)
+    fn current_raw_line(&self) -> &'a str {
+        self.lines[self.i]
+    }
+
+    /// Check if line is only whitespace and/or a comment
+    fn is_comment_or_empty_line(&self) -> bool {
+        let raw = self.lines[self.i];
+        let without_comment = match raw.find("%%") {
+            Some(idx) => &raw[..idx],
+            None => raw,
+        };
+        without_comment.trim().is_empty()
+    }
+
+    /// Parse a comment line into CommentAst
+    fn parse_comment_line(&self) -> Option<CommentAst> {
+        let raw = self.lines[self.i];
+        if let Some(idx) = raw.find("%%") {
+            Some(CommentAst {
+                prefix: raw[..idx].to_string(),
+                text: raw[idx + 2..].to_string(),
+            })
+        } else if raw.trim().is_empty() {
+            // Empty/whitespace line - preserve as empty comment
+            Some(CommentAst {
+                prefix: raw.to_string(),
+                text: String::new(),
+            })
+        } else {
+            None
+        }
+    }
+
     fn parse_items_until_end(&mut self) -> Result<Vec<Stmt>, ParseError> {
         let mut items = Vec::new();
         while !self.eof() {
@@ -117,11 +152,7 @@ impl<'a> Parser<'a> {
             }
 
             let t = self.current_line_wo_comment().trim();
-            if t.is_empty() {
-                self.advance();
-                continue;
-            }
-
+            
             if t == "}" {
                 self.advance();
                 break;
@@ -140,7 +171,13 @@ impl<'a> Parser<'a> {
         }
 
         let t = self.current_line_wo_comment().trim();
-        if t.is_empty() {
+        
+        // Check for comment-only or empty line first
+        if self.is_comment_or_empty_line() {
+            if let Some(comment) = self.parse_comment_line() {
+                self.advance();
+                return Ok(Some(Stmt::Comment(comment)));
+            }
             self.advance();
             return Ok(None);
         }
@@ -165,19 +202,24 @@ impl<'a> Parser<'a> {
         }
 
         // Otherwise, relation
+        let start_line = self.line_no();
         let rel = self.parse_relation_line(t).map_err(|mut e| {
             // keep current line number
             e.line = self.line_no();
             e
         })?;
         self.advance();
-        Ok(Some(Stmt::Relation(rel)))
+        Ok(Some(Stmt::Relation(RelationAst {
+            span: Some(Span { start_line, end_line: start_line }),
+            ..rel
+        })))
     }
 
     // group { ... }
     // group IDENT { ... }
     // allow '{' on same line OR next non-empty line
     fn parse_group(&mut self) -> Result<GroupAst, ParseError> {
+        let start_line = self.line_no();
         let t = self.current_line_wo_comment().trim();
 
         // parse header: "group" [IDENT]? ["{"]?
@@ -218,7 +260,7 @@ impl<'a> Parser<'a> {
             self.consume_required_lbrace("group")?;
         }
 
-        // parse body: allow @pos lines and nested statements
+        // parse body: allow @pos lines, comments, and nested statements
         let mut pos: Option<PointI> = None;
         let mut items: Vec<Stmt> = Vec::new();
 
@@ -228,13 +270,16 @@ impl<'a> Parser<'a> {
             }
 
             let t = self.current_line_wo_comment().trim();
-            if t.is_empty() {
-                self.advance();
-                continue;
-            }
+            
             if t == "}" {
+                let end_line = self.line_no();
                 self.advance();
-                break;
+                return Ok(GroupAst {
+                    id,
+                    pos,
+                    items,
+                    span: Some(Span { start_line, end_line }),
+                });
             }
 
             if t.starts_with("@pos:") {
@@ -254,13 +299,12 @@ impl<'a> Parser<'a> {
                 items.push(stmt);
             }
         }
-
-        Ok(GroupAst { id, pos, items })
     }
 
     // class IDENT ["Label"] [ "{" ... "}" ]?
     // allow '{' on same line OR next non-empty line
     fn parse_class(&mut self) -> Result<ClassAst, ParseError> {
+        let start_line = self.line_no();
         let t = self.current_line_wo_comment().trim();
         let mut rest = t.strip_prefix("class").unwrap().trim();
 
@@ -309,11 +353,13 @@ impl<'a> Parser<'a> {
         }
 
         if !has_lbrace {
+            // Single-line class declaration, span is just the header line
             return Ok(ClassAst {
                 id,
                 label,
                 pos: None,
                 body_lines: Vec::new(),
+                span: Some(Span { start_line, end_line: start_line }),
             });
         }
 
@@ -331,8 +377,15 @@ impl<'a> Parser<'a> {
                 continue;
             }
             if t == "}" {
+                let end_line = self.line_no();
                 self.advance();
-                break;
+                return Ok(ClassAst {
+                    id,
+                    label,
+                    pos,
+                    body_lines,
+                    span: Some(Span { start_line, end_line }),
+                });
             }
 
             if t.starts_with("@pos:") {
@@ -352,13 +405,6 @@ impl<'a> Parser<'a> {
             body_lines.push(t.to_string());
             self.advance();
         }
-
-        Ok(ClassAst {
-            id,
-            label,
-            pos,
-            body_lines,
-        })
     }
 
     fn parse_relation_line(&self, line: &str) -> Result<RelationAst, ParseError> {
@@ -389,6 +435,7 @@ impl<'a> Parser<'a> {
             arrow,
             to: Ident(to.to_string()),
             label,
+            span: None, // Span is added by parse_stmt_or_none
         })
     }
 

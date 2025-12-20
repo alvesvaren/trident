@@ -122,3 +122,47 @@ pub fn compile_diagram(input: &str) -> String {
     let output = DiagramOutput { groups, nodes, edges };
     to_string(&output).unwrap()
 }
+
+/// Update a class position and return the new source code
+#[wasm_bindgen]
+pub fn update_class_pos(source: &str, class_id: &str, x: i32, y: i32) -> String {
+    let mut ast = match parser::parse_file(source) {
+        Ok(ast) => ast,
+        Err(e) => {
+            console_error(&format!("Error parsing file: {:?}", e));
+            return source.to_string();
+        }
+    };
+    
+    let new_pos = parser::PointI { x, y };
+    if parser::update_class_position(&mut ast, class_id, new_pos) {
+        parser::emit_file(&ast)
+    } else {
+        console_error(&format!("Class '{}' not found", class_id));
+        source.to_string()
+    }
+}
+
+/// Update a group position and return the new source code.
+/// For named groups: pass the group_id.
+/// For anonymous groups: pass empty string for group_id and use the group_index.
+#[wasm_bindgen]
+pub fn update_group_pos(source: &str, group_id: &str, group_index: usize, x: i32, y: i32) -> String {
+    let mut ast = match parser::parse_file(source) {
+        Ok(ast) => ast,
+        Err(e) => {
+            console_error(&format!("Error parsing file: {:?}", e));
+            return source.to_string();
+        }
+    };
+    
+    let new_pos = parser::PointI { x, y };
+    let group_id_opt = if group_id.is_empty() { None } else { Some(group_id) };
+    
+    if parser::update_group_position(&mut ast, group_id_opt, group_index, new_pos) {
+        parser::emit_file(&ast)
+    } else {
+        console_error(&format!("Group not found (id={:?}, index={})", group_id_opt, group_index));
+        source.to_string()
+    }
+}

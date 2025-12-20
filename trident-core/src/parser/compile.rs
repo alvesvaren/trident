@@ -193,6 +193,7 @@ impl CompileCtx {
                 Stmt::Group(g) => self.compile_group(g, parent_gid)?,
                 Stmt::Class(c) => self.compile_class(c, parent_gid)?,
                 Stmt::Relation(r) => self.collect_relation(r)?,
+                Stmt::Comment(_) => {} // Comments don't affect the diagram
             }
         }
         Ok(())
