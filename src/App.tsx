@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
-import { compile_diagram, update_class_pos, update_group_pos, remove_class_pos, remove_all_pos } from "trident-core";
+import * as trident_core from "trident-core";
 import { Lock, Save, FolderOpen, Trash2, Unlock } from "lucide-react";
 
 import Editor from "@monaco-editor/react";
@@ -109,7 +109,7 @@ function App() {
 
   useEffect(() => {
     const start = performance.now();
-    const jsonResult = compile_diagram(code);
+    const jsonResult = trident_core.compile_diagram(code);
     setResult(JSON.parse(jsonResult));
     const end = performance.now();
     console.log(`Time taken to parse: ${end - start} milliseconds`);
@@ -197,9 +197,9 @@ function App() {
       // Update code with local position
       let newCode: string;
       if (dragState.type === "node") {
-        newCode = update_class_pos(code, dragState.id, newLocalX, newLocalY);
+        newCode = trident_core.update_class_pos(code, dragState.id, newLocalX, newLocalY);
       } else {
-        newCode = update_group_pos(
+        newCode = trident_core.update_group_pos(
           code,
           dragState.id,
           dragState.groupIndex ?? 0,
@@ -225,7 +225,7 @@ function App() {
     (nodeId: string, e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      const newCode = remove_class_pos(code, nodeId);
+      const newCode = trident_core.remove_class_pos(code, nodeId);
       if (newCode !== code) {
         setCode(newCode);
       }
@@ -275,7 +275,7 @@ function App() {
 
   // Remove all locks
   const handleRemoveAllLocks = useCallback(() => {
-    const newCode = remove_all_pos(code);
+    const newCode = trident_core.remove_all_pos(code);
     setCode(newCode);
   }, [code]);
 
