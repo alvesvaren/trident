@@ -3,7 +3,7 @@ use wasm_bindgen::prelude::*;
 mod parser;
 mod layout;
 use layout::{layout_diagram, LayoutConfig, RectI};
-use parser::Arrow;
+use parser::{Arrow, PointI};
 use serde::Serialize;
 use serde_json::to_string;
 
@@ -27,6 +27,8 @@ pub struct NodeOutput {
     pub bounds: RectI,
     /// Whether this node has a fixed position (@pos in the source)
     pub has_pos: bool,
+    /// World position of parent group (for calculating local coords during drag)
+    pub parent_offset: PointI,
 }
 
 /// An edge between two nodes
@@ -101,12 +103,15 @@ pub fn compile_diagram(input: &str) -> String {
     // Build nodes
     let nodes: Vec<NodeOutput> = diagram.classes.iter().map(|c| {
         let bounds = layout.class_world_bounds.get(&c.cid).copied().unwrap_or(RectI { x: 0, y: 0, w: 0, h: 0 });
+        // Get parent group's world position for local coordinate calculation
+        let parent_world = layout.group_world_pos.get(&c.group).copied().unwrap_or(PointI { x: 0, y: 0 });
         NodeOutput {
             id: c.id.0.clone(),
             label: c.label.clone(),
             body_lines: c.body_lines.clone(),
             bounds,
             has_pos: c.pos.is_some(),
+            parent_offset: parent_world,
         }
     }).collect();
     

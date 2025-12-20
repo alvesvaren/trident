@@ -18,6 +18,7 @@ interface DiagramNode {
   body_lines: string[];
   bounds: Bounds;
   has_pos: boolean;
+  parent_offset: { x: number; y: number };
 }
 
 interface DiagramEdge {
@@ -44,10 +45,12 @@ interface DragState {
   type: "node" | "group";
   id: string;
   groupIndex?: number; // For anonymous groups
-  startX: number; // Original position of element
+  startX: number; // Original position of element (world coords)
   startY: number;
   startMouseX: number; // Mouse position at drag start
   startMouseY: number;
+  parentOffsetX: number; // Parent group's world position
+  parentOffsetY: number;
 }
 
 /** Get center of a bounds rectangle */
@@ -146,6 +149,8 @@ function App() {
         startY: node.bounds.y,
         startMouseX: e.clientX,
         startMouseY: e.clientY,
+        parentOffsetX: node.parent_offset.x,
+        parentOffsetY: node.parent_offset.y,
       });
     },
     []
@@ -156,6 +161,9 @@ function App() {
     (e: React.MouseEvent, group: DiagramGroup, index: number) => {
       e.preventDefault();
       e.stopPropagation();
+      // Groups at the top level have parent offset of (0,0)
+      // For nested groups, we'd need to track their parent too
+      // For now, groups are always at root level in the output
       setDragState({
         type: "group",
         id: group.id,
@@ -164,6 +172,8 @@ function App() {
         startY: group.bounds.y,
         startMouseX: e.clientX,
         startMouseY: e.clientY,
+        parentOffsetX: 0, // Root groups have no parent offset
+        parentOffsetY: 0,
       });
     },
     []
@@ -174,23 +184,27 @@ function App() {
     (e: React.MouseEvent) => {
       if (!dragState) return;
 
-      // Calculate new position
+      // Calculate new world position
       const deltaX = e.clientX - dragState.startMouseX;
       const deltaY = e.clientY - dragState.startMouseY;
-      const newX = Math.round(dragState.startX + deltaX);
-      const newY = Math.round(dragState.startY + deltaY);
+      const newWorldX = Math.round(dragState.startX + deltaX);
+      const newWorldY = Math.round(dragState.startY + deltaY);
 
-      // Update code with new position
+      // Convert to local coordinates by subtracting parent offset
+      const newLocalX = newWorldX - dragState.parentOffsetX;
+      const newLocalY = newWorldY - dragState.parentOffsetY;
+
+      // Update code with local position
       let newCode: string;
       if (dragState.type === "node") {
-        newCode = update_class_pos(code, dragState.id, newX, newY);
+        newCode = update_class_pos(code, dragState.id, newLocalX, newLocalY);
       } else {
         newCode = update_group_pos(
           code,
           dragState.id,
           dragState.groupIndex ?? 0,
-          newX,
-          newY
+          newLocalX,
+          newLocalY
         );
       }
 
