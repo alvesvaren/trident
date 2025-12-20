@@ -12,5 +12,5 @@ curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh -s -- -y
 
 echo "Building app..."
 # Build wasm
-pnpm wasm-build
+pnpm build
 
