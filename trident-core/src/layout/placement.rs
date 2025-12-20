@@ -89,7 +89,7 @@ pub fn layout_group_children_graph_driven(
     free_groups.sort_by_key(|gid| diagram.groups[gid.0].order);
 
     // Place free classes using graph-driven algorithm
-    let mut pending_classes: Vec<ClassId> = free_classes;
+    let mut pending_classes: Vec<ClassId> = free_classes.clone();
 
     while !pending_classes.is_empty() {
         // Pick next node: highest edge weight to placed nodes, tie-break by order
@@ -143,9 +143,31 @@ pub fn layout_group_children_graph_driven(
         &mut placed_groups,
         group_local_bounds,
     );
+
+    // Optimization pass: try to improve positions (compact and reduce edge lengths)
+    optimize_node_positions(
+        &free_classes,
+        class_local_pos,
+        cfg,
+        adjacency,
+        &fixed_classes,
+        &fixed_groups,
+        group_local_bounds,
+    );
+
+    optimize_group_positions(
+        &free_groups,
+        group_local_pos,
+        cfg,
+        diagram,
+        group_local_bounds,
+        &fixed_classes,
+        class_local_pos,
+    );
 }
 
 /// Pick the next class to place based on connectivity to already-placed nodes.
+/// When no nodes are placed yet, picks the highest-degree node (hub) to start from.
 fn pick_next_class(
     pending: &[ClassId],
     placed: &HashSet<ClassId>,
@@ -154,6 +176,7 @@ fn pick_next_class(
 ) -> usize {
     let mut best_idx = 0;
     let mut best_score = 0usize;
+    let mut best_degree = 0usize;
     let mut best_order = usize::MAX;
 
     for (idx, &cid) in pending.iter().enumerate() {
@@ -165,17 +188,19 @@ fn pick_next_class(
             }
         }
 
-        // If no placed neighbors, use total degree
-        if score == 0 && placed.is_empty() {
-            score = adjacency.get_degree(cid);
-        }
-
+        // Total degree used as tiebreaker (prefer hub nodes)
+        let degree = adjacency.get_degree(cid);
         let order = diagram.classes[cid.0].order;
 
-        // Higher score wins, tie-break by earlier order
-        if score > best_score || (score == best_score && order < best_order) {
+        // Priority: 1) most connections to placed, 2) highest total degree, 3) earlier order
+        let is_better = score > best_score
+            || (score == best_score && degree > best_degree)
+            || (score == best_score && degree == best_degree && order < best_order);
+
+        if is_better {
             best_idx = idx;
             best_score = score;
+            best_degree = degree;
             best_order = order;
         }
     }
@@ -184,6 +209,7 @@ fn pick_next_class(
 }
 
 /// Generate candidate positions around connected placed nodes.
+/// Generates positions adjacent to ALL connected placed nodes, not just the strongest.
 fn generate_candidates(
     cid: ClassId,
     placed_positions: &HashMap<ClassId, PointI>,
@@ -191,65 +217,83 @@ fn generate_candidates(
     cfg: &LayoutConfig,
     placed: &HashSet<ClassId>,
 ) -> Vec<PointI> {
-    let mut candidates = Vec::with_capacity(NUM_CANDIDATES);
+    let mut candidates = Vec::with_capacity(NUM_CANDIDATES * 2);
+    let step_x = cfg.class_size.w + cfg.gap;
+    let step_y = cfg.class_size.h + cfg.gap;
 
-    // Find strongest connected placed neighbor
-    let mut best_neighbor: Option<ClassId> = None;
-    let mut best_weight = 0usize;
-
+    // Collect all connected placed neighbors
+    let mut connected_neighbors: Vec<(ClassId, usize, PointI)> = Vec::new();
     for (neighbor, weight) in adjacency.get_neighbors(cid) {
-        if placed.contains(neighbor) && *weight > best_weight {
-            best_neighbor = Some(*neighbor);
-            best_weight = *weight;
+        if let Some(&pos) = placed_positions.get(neighbor) {
+            if placed.contains(neighbor) {
+                connected_neighbors.push((*neighbor, *weight, pos));
+            }
         }
     }
 
-    if let Some(neighbor) = best_neighbor {
-        if let Some(&center) = placed_positions.get(&neighbor) {
-            // Generate positions in a spiral around the neighbor
-            let step = cfg.class_size.w + cfg.gap;
-            generate_spiral_candidates(&mut candidates, center, step, cfg);
+    // Sort by weight descending so we prioritize positions near strongly connected nodes
+    connected_neighbors.sort_by_key(|(_, w, _)| std::cmp::Reverse(*w));
+
+    // For each connected neighbor, generate adjacent positions
+    for (_, _weight, neighbor_pos) in &connected_neighbors {
+        // Generate 4 cardinal positions directly adjacent
+        let adjacent = [
+            // Right
+            PointI { x: neighbor_pos.x + step_x, y: neighbor_pos.y },
+            // Left
+            PointI { x: neighbor_pos.x - step_x, y: neighbor_pos.y },
+            // Below
+            PointI { x: neighbor_pos.x, y: neighbor_pos.y + step_y },
+            // Above
+            PointI { x: neighbor_pos.x, y: neighbor_pos.y - step_y },
+            // Diagonals (less preferred but still close)
+            PointI { x: neighbor_pos.x + step_x, y: neighbor_pos.y + step_y },
+            PointI { x: neighbor_pos.x - step_x, y: neighbor_pos.y + step_y },
+            PointI { x: neighbor_pos.x + step_x, y: neighbor_pos.y - step_y },
+            PointI { x: neighbor_pos.x - step_x, y: neighbor_pos.y - step_y },
+        ];
+
+        for pos in adjacent {
+            if pos.x >= cfg.group_padding && pos.y >= cfg.group_padding {
+                // Avoid duplicates
+                if !candidates.contains(&pos) {
+                    candidates.push(pos);
+                }
+            }
+        }
+
+        if candidates.len() >= NUM_CANDIDATES {
+            break;
         }
     }
 
-    // If no placed neighbors or not enough candidates, add grid positions
-    if candidates.len() < NUM_CANDIDATES {
-        let remaining = NUM_CANDIDATES - candidates.len();
-        generate_grid_candidates(&mut candidates, cfg, remaining);
+    // If we have connected neighbors, also add positions in a wider ring
+    if !connected_neighbors.is_empty() {
+        let center = connected_neighbors[0].2; // Strongest neighbor
+        for ring in 2..=3 {
+            for dx in -1..=1 {
+                for dy in -1..=1 {
+                    if dx == 0 && dy == 0 { continue; }
+                    let pos = PointI {
+                        x: center.x + dx * step_x * ring,
+                        y: center.y + dy * step_y * ring,
+                    };
+                    if pos.x >= cfg.group_padding && pos.y >= cfg.group_padding {
+                        if !candidates.contains(&pos) {
+                            candidates.push(pos);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // If no placed neighbors, use grid positions
+    if candidates.is_empty() {
+        generate_grid_candidates(&mut candidates, cfg, NUM_CANDIDATES);
     }
 
     candidates
-}
-
-/// Generate positions in a spiral pattern around a center point.
-fn generate_spiral_candidates(
-    candidates: &mut Vec<PointI>,
-    center: PointI,
-    step: i32,
-    cfg: &LayoutConfig,
-) {
-    // 8 directions around center (right, down, left, up, and diagonals)
-    let directions: [(i32, i32); 8] = [
-        (1, 0), (1, 1), (0, 1), (-1, 1),
-        (-1, 0), (-1, -1), (0, -1), (1, -1),
-    ];
-
-    // Multiple rings
-    for ring in 1..=4 {
-        for &(dx, dy) in &directions {
-            let x = center.x + dx * step * ring;
-            let y = center.y + dy * step * ring;
-
-            // Clamp to valid area (at least at padding)
-            if x >= cfg.group_padding && y >= cfg.group_padding {
-                candidates.push(PointI { x, y });
-            }
-
-            if candidates.len() >= NUM_CANDIDATES {
-                return;
-            }
-        }
-    }
 }
 
 /// Generate grid positions (fallback for nodes with no placed neighbors).
@@ -261,12 +305,16 @@ fn generate_grid_candidates(candidates: &mut Vec<PointI>, cfg: &LayoutConfig, co
     for i in 0..count {
         let col = i as i32 % cols;
         let row = i as i32 / cols;
-        candidates.push(PointI {
+        let pos = PointI {
             x: cfg.group_padding + col * step_x,
             y: cfg.group_padding + row * step_y,
-        });
+        };
+        if !candidates.contains(&pos) {
+            candidates.push(pos);
+        }
     }
 }
+
 
 /// Find the best position from candidates (lowest edge length score, non-overlapping).
 fn find_best_position(
@@ -624,4 +672,189 @@ fn find_best_group_position(
     }
 
     best_pos
+}
+
+/// Optimize node positions by trying to move them closer to their neighbors.
+fn optimize_node_positions(
+    free_classes: &[ClassId],
+    class_local_pos: &mut HashMap<ClassId, PointI>,
+    cfg: &LayoutConfig,
+    adjacency: &Adjacency,
+    _fixed_classes: &[ClassId],
+    _fixed_groups: &[GroupId],
+    _group_local_bounds: &HashMap<GroupId, RectI>,
+) {
+    let mut changed = true;
+    let mut iter = 0;
+    let max_iters = 5;
+
+    while changed && iter < max_iters {
+        changed = false;
+        iter += 1;
+
+        // Simplified: just add ALL items currently in their positions to spatial grid
+        let mut current_rects: Vec<(ClassId, RectI)> = Vec::new();
+        for (cid, pos) in class_local_pos.iter() {
+             current_rects.push((*cid, RectI { x: pos.x, y: pos.y, w: cfg.class_size.w, h: cfg.class_size.h }));
+        }
+
+        // Add fixed groups as obstacles
+        let _fixed_group_rects: Vec<RectI> = Vec::new();
+        // Since we don't have easy access to fixed group positions/bounds here (they are in diagram/group_local_bounds),
+        // and fixed items are usually handled by initial placement, we'll skip strict overlap check against groups 
+        // for node optimization in this simplified pass. Fixed classes ARE in class_local_pos so they are checked.
+
+        // Sort by id for determinism
+        let mut nodes_to_optimize = free_classes.to_vec();
+        nodes_to_optimize.sort_by_key(|c| c.0);
+
+        for cid in nodes_to_optimize {
+            let current_pos = match class_local_pos.get(&cid) {
+                Some(p) => *p,
+                None => continue,
+            };
+            
+            // Calculate ideal position (centroid of neighbors)
+            let mut sum_x = 0;
+            let mut sum_y = 0;
+            let mut count = 0;
+            
+            for (neighbor, _) in adjacency.get_neighbors(cid) {
+                if let Some(pos) = class_local_pos.get(neighbor) {
+                    sum_x += pos.x;
+                    sum_y += pos.y;
+                    count += 1;
+                }
+            }
+
+            if count > 0 {
+                let ideal_x = sum_x / count;
+                let ideal_y = sum_y / count;
+
+                // Try to move towards ideal, but keep grid alignment
+                let step_x = cfg.class_size.w + cfg.gap;
+                let step_y = cfg.class_size.h + cfg.gap;
+
+                // Snap ideal to grid relative to padding
+                let snap_x = ((ideal_x - cfg.group_padding) as f32 / step_x as f32).round() as i32 * step_x + cfg.group_padding;
+                let snap_y = ((ideal_y - cfg.group_padding) as f32 / step_y as f32).round() as i32 * step_y + cfg.group_padding;
+                
+                let target = PointI { x: snap_x.max(cfg.group_padding), y: snap_y.max(cfg.group_padding) };
+
+                if target != current_pos {
+                    // Check if target is free
+                    let rect = RectI { x: target.x, y: target.y, w: cfg.class_size.w, h: cfg.class_size.h };
+                    
+                    // Check vs all OTHER nodes
+                    let mut overlap = false;
+                    for (other_cid, other_rect) in &current_rects {
+                        if *other_cid != cid && other_rect.overlaps(&rect) {
+                            overlap = true;
+                            break;
+                        }
+                    }
+
+                    if !overlap {
+                        class_local_pos.insert(cid, target);
+                        // Update current_rects for subsequent checks in this pass
+                        for item in &mut current_rects {
+                            if item.0 == cid {
+                                item.1 = rect;
+                                break;
+                            }
+                        }
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Optimize group positions
+fn optimize_group_positions(
+    free_groups: &[GroupId],
+    group_local_pos: &mut HashMap<GroupId, PointI>,
+    cfg: &LayoutConfig,
+    diagram: &Diagram,
+    group_local_bounds: &HashMap<GroupId, RectI>,
+    _fixed_classes: &[ClassId],
+    _class_local_pos: &HashMap<ClassId, PointI>,
+) {
+    use super::adjacency::compute_group_adjacency;
+    let group_adj = compute_group_adjacency(diagram);
+    let mut group_neighbors: HashMap<GroupId, Vec<GroupId>> = HashMap::new();
+     for ((g1, g2), _) in group_adj {
+        group_neighbors.entry(g1).or_default().push(g2);
+        group_neighbors.entry(g2).or_default().push(g1);
+    }
+    
+    // Simple centroid attraction
+    let mut changed = true;
+    let mut iter = 0;
+    while changed && iter < 3 {
+        changed = false;
+        iter += 1;
+
+        let mut groups_to_optim = free_groups.to_vec();
+        groups_to_optim.sort_by_key(|g| g.0);
+        
+        for gid in groups_to_optim {
+            let current_pos = match group_local_pos.get(&gid) {
+                Some(p) => *p,
+                None => continue,
+            };
+            let bounds = match group_local_bounds.get(&gid) {
+                Some(b) => b,
+                None => continue,
+            };
+            let size = SizeI { w: bounds.w, h: bounds.h };
+
+             // Centroid of connected groups
+            let mut sum_x = 0;
+            let mut sum_y = 0;
+            let mut count = 0;
+
+            if let Some(neighbors) = group_neighbors.get(&gid) {
+                for neighbor in neighbors {
+                    if let Some(pos) = group_local_pos.get(neighbor) {
+                        sum_x += pos.x;
+                        sum_y += pos.y;
+                        count += 1;
+                    }
+                }
+            }
+
+            if count > 0 {
+                let ideal_x = sum_x / count;
+                let ideal_y = sum_y / count;
+                
+                 // Try to move closer
+                let target = PointI { x: ideal_x.max(cfg.group_padding), y: ideal_y.max(cfg.group_padding) };
+                
+                if (target.x - current_pos.x).abs() > 10 || (target.y - current_pos.y).abs() > 10 {
+                     // Check overlap
+                    let rect = RectI { x: target.x, y: target.y, w: size.w, h: size.h };
+                    let mut overlap = false;
+                     // Check vs all other groups
+                    for (&other_gid, &other_pos) in group_local_pos.iter() {
+                        if other_gid != gid {
+                            if let Some(other_bounds) = group_local_bounds.get(&other_gid) {
+                                let other_rect = RectI { x: other_pos.x, y: other_pos.y, w: other_bounds.w, h: other_bounds.h };
+                                if rect.overlaps(&other_rect) {
+                                    overlap = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if !overlap {
+                        group_local_pos.insert(gid, target);
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
 }
