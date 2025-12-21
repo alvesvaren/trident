@@ -1,6 +1,7 @@
 // sddMonaco.ts
-// Monaco language support for SDD v0.0.1 (as per your parser):
-// - keywords: classDiagram, group, class
+// Monaco language support for SDD/Trident:
+// - keywords: classDiagram, group, class, interface, enum, struct, record, trait, object
+// - modifiers: abstract, static, sealed, final, public, private, protected
 // - comments: %% line comment
 // - strings: "..." (no escapes)
 // - relations: support arrow tokens even without spaces (A-->B, A<|--B:label)
@@ -40,7 +41,7 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
     folding: {
       offSide: false,
       markers: {
-        start: new RegExp("^\\s*(group|class)\\b.*\\{\\s*$"),
+        start: new RegExp("^\\s*(group|class|interface|enum|struct|record|trait|object)\\b.*\\{\\s*$"),
         end: new RegExp("^\\s*}\\s*$"),
       },
     },
@@ -51,7 +52,14 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
     defaultToken: "",
     tokenPostfix: ".sdd",
 
-    keywords: ["classDiagram", "group", "class"],
+    // Node kind keywords
+    nodeKinds: ["class", "interface", "enum", "struct", "record", "trait", "object"],
+
+    // Modifier keywords
+    modifiers: ["abstract", "static", "sealed", "final", "public", "private", "protected"],
+
+    // Other keywords
+    keywords: ["classDiagram", "group"],
 
     // Arrow tokens (longest first)
     arrows: [
@@ -72,13 +80,8 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
         // line comment
         [/%%.*$/, "comment"],
 
-        // keywords
-        [/\bclassDiagram\b/, "keyword"],
-        [/\bgroup\b/, "keyword"],
-        [/\bclass\b/, "keyword"],
-
         // directive (currently only @pos:)
-        [/[@]pos:/, "keyword"],
+        [/[@]pos:/, "annotation"],
 
         // braces / parens
         [/[{}]/, "@brackets"],
@@ -92,10 +95,19 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
 
         // arrow operators (including when embedded in A-->B)
         // We highlight them anywhere in the line; Monaco will match mid-token.
-        [/<\|--|--\|>|\.\.>|<\.\.|---|-->|<--|o--|\*--|\.\./, "operator"],
+        [/<\|--|--\|>|\.\.>|<\.\.|----|-->|<--|o--|\*--|\.\./, "operator"],
 
         // label delimiter in relations (A-->B:label)
         [/:/, "delimiter"],
+
+        // Node kinds (highlighted specially)
+        [/\b(class|interface|enum|struct|record|trait|object)\b/, "keyword.type"],
+
+        // Modifiers (highlighted specially)
+        [/\b(abstract|static|sealed|final|public|private|protected)\b/, "keyword.modifier"],
+
+        // Other keywords
+        [/\b(classDiagram|group)\b/, "keyword"],
 
         // identifiers
         [/[A-Za-z_][A-Za-z0-9_]*/, "identifier"],
@@ -118,17 +130,24 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
     base: "vs-dark",
     inherit: true,
     rules: [
+      // Keywords
       { token: "keyword", foreground: "C586C0" },
-      { token: "comment", foreground: "777777" },
+      { token: "keyword.type", foreground: "4EC9B0", fontStyle: "bold" },  // Node kinds in teal
+      { token: "keyword.modifier", foreground: "569CD6" },  // Modifiers in blue
+
+      // Annotations/directives
+      { token: "annotation", foreground: "DCDCAA" },
+
+      // Other tokens
+      { token: "comment", foreground: "6A9955" },
       { token: "string", foreground: "CE9178" },
       { token: "number", foreground: "B5CEA8" },
-      { token: "operator", foreground: "FFFFFF" },
+      { token: "operator", foreground: "D4D4D4" },
       { token: "delimiter", foreground: "D4D4D4" },
       { token: "identifier", foreground: "9CDCFE" },
     ],
     colors: {
-        // Text color
-        "editor.foreground": "#FF3333",
+      // Keep default editor colors
     },
   });
 }

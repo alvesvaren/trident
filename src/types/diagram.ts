@@ -11,6 +11,10 @@ export interface Bounds {
 
 export interface DiagramNode {
     id: string;
+    /** Node kind: "class", "interface", "enum", etc. */
+    kind: string;
+    /** Modifiers: "abstract", "static", "sealed", etc. */
+    modifiers: string[];
     label: string | null;
     body_lines: string[];
     bounds: Bounds;
