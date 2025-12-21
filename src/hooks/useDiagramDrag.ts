@@ -53,7 +53,9 @@ export function useDiagramDrag({
         e.preventDefault();
         e.stopPropagation();
         hasUpdatedRef.current = false;
-        dragCodeRef.current = codeRef.current;
+        // Use pendingCodeRef if available (handles race condition when starting new drag
+        // before React state has updated from previous drag)
+        dragCodeRef.current = pendingCodeRef.current ?? codeRef.current;
         // Push undo stop before starting drag to mark the "before" state
         editorRef?.current?.pushUndoStop();
         setDragState({
@@ -75,7 +77,9 @@ export function useDiagramDrag({
             e.preventDefault();
             e.stopPropagation();
             hasUpdatedRef.current = false;
-            dragCodeRef.current = codeRef.current;
+            // Use pendingCodeRef if available (handles race condition when starting new drag
+            // before React state has updated from previous drag)
+            dragCodeRef.current = pendingCodeRef.current ?? codeRef.current;
             // Push undo stop before starting drag to mark the "before" state
             editorRef?.current?.pushUndoStop();
             setDragState({

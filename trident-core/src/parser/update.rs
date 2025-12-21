@@ -221,4 +221,30 @@ mod tests {
         assert!(output.contains("interface IFoo"));
         assert!(output.contains("@pos: (100, 200)"));
     }
+
+    #[test]
+    fn test_update_preserves_other_positions() {
+        // Two nodes, both with positions
+        let input = "@layout: grid
+class Foo {
+    @pos: (10, 20)
+}
+class Bar {
+    @pos: (100, 200)
+}
+";
+        let mut ast = parse_file(input).unwrap();
+        
+        // Update Foo's position
+        let updated = update_node_position(&mut ast, "Foo", PointI { x: 50, y: 60 });
+        assert!(updated);
+        
+        let output = emit_file(&ast);
+        println!("Output:\n{}", output);
+        
+        // Foo should have new position
+        assert!(output.contains("@pos: (50, 60)"), "Foo's position should be updated");
+        // Bar should keep its position
+        assert!(output.contains("@pos: (100, 200)"), "Bar's position should be preserved");
+    }
 }
