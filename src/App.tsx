@@ -6,10 +6,16 @@ import { CodeEditor, type CodeEditorRef } from "./components/editor/CodeEditor";
 import { Toolbar } from "./components/editor/Toolbar";
 import { DiagramCanvas } from "./components/diagram/DiagramCanvas";
 
+const STORAGE_KEY = "trident-editor-code";
+
 function App() {
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(() => localStorage.getItem(STORAGE_KEY) ?? "");
   const [result, setResult] = useState<DiagramOutput>({});
   const editorRef = useRef<CodeEditorRef | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, code);
+  }, [code]);
 
   useEffect(() => {
     const start = performance.now();
