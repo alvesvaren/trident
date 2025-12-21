@@ -62,16 +62,17 @@ export function getEdgeMarkers(arrow: string): {
     let markerStart = "";
 
     if (baseArrow === "extends") {
-        if (arrowAtFrom) markerStart = "url(#triangle)";
-        else markerEnd = "url(#triangle)";
+        if (arrowAtFrom) markerStart = "url(#triangle-start)";
+        else markerEnd = "url(#triangle-end)";
     } else if (baseArrow === "assoc" || baseArrow === "dep") {
-        if (arrowAtFrom) markerStart = "url(#arrowhead)";
-        else markerEnd = "url(#arrowhead)";
+        if (arrowAtFrom) markerStart = "url(#arrowhead-start)";
+        else markerEnd = "url(#arrowhead-end)";
     } else if (baseArrow === "aggregate") {
-        markerStart = "url(#diamond-empty)";
+        markerStart = "url(#diamond-empty-start)";
     } else if (baseArrow === "compose") {
-        markerStart = "url(#diamond)";
+        markerStart = "url(#diamond-start)";
     }
 
     return { markerStart, markerEnd };
 }
+

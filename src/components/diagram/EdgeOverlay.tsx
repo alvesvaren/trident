@@ -55,46 +55,80 @@ export function EdgeOverlay({ edges, nodes, dragState }: EdgeOverlayProps) {
             viewBox={`${svgViewport.x} ${svgViewport.y} ${svgViewport.width} ${svgViewport.height}`}
         >
             <defs>
+                {/* Arrowhead for markerEnd - refX at tip so line ends at back of arrow */}
                 <marker
-                    id="arrowhead"
+                    id="arrowhead-end"
                     markerWidth="10"
                     markerHeight="7"
-                    refX="9"
+                    refX="10"
                     refY="3.5"
                     orient="auto"
                 >
                     <polygon points="0 0, 10 3.5, 0 7" fill="#888" />
                 </marker>
+                {/* Arrowhead for markerStart - refX at 0 so arrow appears at line start */}
                 <marker
-                    id="triangle"
+                    id="arrowhead-start"
+                    markerWidth="10"
+                    markerHeight="7"
+                    refX="0"
+                    refY="3.5"
+                    orient="auto"
+                >
+                    <polygon points="0 3.5, 10 0, 10 7" fill="#888" />
+                </marker>
+
+                {/* Triangle (extends) for markerEnd - hollow triangle, line stops at back */}
+                <marker
+                    id="triangle-end"
                     markerWidth="12"
                     markerHeight="10"
-                    refX="11"
+                    refX="12"
                     refY="5"
                     orient="auto"
                 >
                     <polygon
                         points="0 0, 12 5, 0 10"
-                        fill="none"
+                        fill="#1e1e1e"
                         stroke="#888"
-                        strokeWidth="1"
+                        strokeWidth="1.5"
                     />
                 </marker>
+                {/* Triangle (extends) for markerStart - hollow triangle at line start */}
                 <marker
-                    id="diamond"
+                    id="triangle-start"
+                    markerWidth="12"
+                    markerHeight="10"
+                    refX="0"
+                    refY="5"
+                    orient="auto"
+                >
+                    <polygon
+                        points="0 5, 12 0, 12 10"
+                        fill="#1e1e1e"
+                        stroke="#888"
+                        strokeWidth="1.5"
+                    />
+                </marker>
+
+                {/* Filled diamond (composition) for markerStart - appears at source node */}
+                <marker
+                    id="diamond-start"
                     markerWidth="12"
                     markerHeight="8"
-                    refX="11"
+                    refX="0"
                     refY="4"
                     orient="auto"
                 >
                     <polygon points="0 4, 6 0, 12 4, 6 8" fill="#888" />
                 </marker>
+
+                {/* Empty diamond (aggregation) for markerStart - appears at source node */}
                 <marker
-                    id="diamond-empty"
+                    id="diamond-empty-start"
                     markerWidth="12"
                     markerHeight="8"
-                    refX="11"
+                    refX="0"
                     refY="4"
                     orient="auto"
                 >
