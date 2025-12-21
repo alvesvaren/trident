@@ -1,16 +1,21 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import * as trident_core from "trident-core";
-import type { DiagramNode, DiagramGroup, DragState } from "../types/diagram";
+import type { DiagramNode, DiagramGroup, DragState, DiagramOutput } from "../types/diagram";
+import type { CodeEditorRef } from "../components/editor/CodeEditor";
 
 const DRAG_THROTTLE_MS = 10;
 
 interface UseDiagramDragOptions {
     code: string;
     onCodeChange: (code: string) => void;
+    /** Optional editor ref for silent updates (no undo history during drag) */
+    editorRef?: React.RefObject<CodeEditorRef | null>;
 }
 
 interface UseDiagramDragResult {
     dragState: DragState | null;
+    /** Layout result computed during drag (use this when dragState is not null) */
+    dragResult: DiagramOutput | null;
     scaleRef: React.MutableRefObject<number>;
     startNodeDrag: (e: React.MouseEvent, node: DiagramNode) => void;
     startGroupDrag: (e: React.MouseEvent, group: DiagramGroup, index: number) => void;
@@ -19,17 +24,28 @@ interface UseDiagramDragResult {
 export function useDiagramDrag({
     code,
     onCodeChange,
+    editorRef,
 }: UseDiagramDragOptions): UseDiagramDragResult {
     const [dragState, setDragState] = useState<DragState | null>(null);
+    // Layout result computed during drag (to avoid updating React code state)
+    const [dragResult, setDragResult] = useState<DiagramOutput | null>(null);
     const scaleRef = useRef<number>(1);
     const codeRef = useRef(code);
     codeRef.current = code;
+    // Track the current code during drag (separate from React state)
+    const dragCodeRef = useRef<string | null>(null);
     const lastLayoutUpdateRef = useRef<number>(0);
     const lastUpdateRef = useRef<{ x: number; y: number } | null>(null);
+    // Track if we've made any updates during this drag (to know if we need undo stop)
+    const hasUpdatedRef = useRef(false);
 
     const startNodeDrag = useCallback((e: React.MouseEvent, node: DiagramNode) => {
         e.preventDefault();
         e.stopPropagation();
+        hasUpdatedRef.current = false;
+        dragCodeRef.current = codeRef.current;
+        // Push undo stop before starting drag to mark the "before" state
+        editorRef?.current?.pushUndoStop();
         setDragState({
             type: "node",
             id: node.id,
@@ -42,12 +58,16 @@ export function useDiagramDrag({
             currentX: node.bounds.x,
             currentY: node.bounds.y,
         });
-    }, []);
+    }, [editorRef]);
 
     const startGroupDrag = useCallback(
         (e: React.MouseEvent, group: DiagramGroup, index: number) => {
             e.preventDefault();
             e.stopPropagation();
+            hasUpdatedRef.current = false;
+            dragCodeRef.current = codeRef.current;
+            // Push undo stop before starting drag to mark the "before" state
+            editorRef?.current?.pushUndoStop();
             setDragState({
                 type: "group",
                 id: group.id,
@@ -62,7 +82,7 @@ export function useDiagramDrag({
                 currentY: group.bounds.y,
             });
         },
-        []
+        [editorRef]
     );
 
     // Use document-level event listeners to prevent dropping when moving fast
@@ -70,7 +90,7 @@ export function useDiagramDrag({
         if (!dragState) return;
 
         // Helper function to update the code/layout
-        const updateLayout = (currentDrag: DragState) => {
+        const updateLayout = (currentDrag: DragState, isFinal: boolean) => {
             const newLocalX = currentDrag.currentX - currentDrag.parentOffsetX;
             const newLocalY = currentDrag.currentY - currentDrag.parentOffsetY;
 
@@ -84,17 +104,20 @@ export function useDiagramDrag({
             }
             lastUpdateRef.current = { x: newLocalX, y: newLocalY };
 
+            // Use drag code ref for incremental updates during drag
+            const sourceCode = dragCodeRef.current ?? codeRef.current;
+
             let newCode: string;
             if (currentDrag.type === "node") {
                 newCode = trident_core.update_class_pos(
-                    codeRef.current,
+                    sourceCode,
                     currentDrag.id,
                     newLocalX,
                     newLocalY
                 );
             } else {
                 newCode = trident_core.update_group_pos(
-                    codeRef.current,
+                    sourceCode,
                     currentDrag.id,
                     currentDrag.groupIndex ?? 0,
                     newLocalX,
@@ -102,8 +125,21 @@ export function useDiagramDrag({
                 );
             }
 
-            if (newCode !== codeRef.current) {
-                onCodeChange(newCode);
+            if (newCode !== sourceCode) {
+                hasUpdatedRef.current = true;
+                dragCodeRef.current = newCode;
+
+                if (isFinal) {
+                    // On release: update React state (this will sync editor properly)
+                    onCodeChange(newCode);
+                    setDragResult(null);
+                } else if (editorRef?.current) {
+                    // During drag: update Monaco silently and compile layout locally
+                    editorRef.current.silentSetValue(newCode);
+                    // Compile layout locally without updating React code state
+                    const jsonResult = trident_core.compile_diagram(newCode);
+                    setDragResult(JSON.parse(jsonResult));
+                }
             }
         };
 
@@ -132,7 +168,7 @@ export function useDiagramDrag({
                 lastLayoutUpdateRef.current = now;
                 setDragState((currentDrag) => {
                     if (currentDrag) {
-                        updateLayout(currentDrag);
+                        updateLayout(currentDrag, false);
                     }
                     return currentDrag; // Keep the drag state
                 });
@@ -144,9 +180,17 @@ export function useDiagramDrag({
                 if (!currentDrag) return null;
 
                 // Final update on mouse up
-                updateLayout(currentDrag);
+                updateLayout(currentDrag, true);
+
+                // Push undo stop after drag ends to mark the "after" state
+                // This groups all drag updates into a single undo operation
+                if (hasUpdatedRef.current && editorRef?.current) {
+                    editorRef.current.pushUndoStop();
+                }
+
                 lastUpdateRef.current = null;
                 lastLayoutUpdateRef.current = 0;
+                dragCodeRef.current = null;
 
                 return null;
             });
@@ -159,10 +203,11 @@ export function useDiagramDrag({
             document.removeEventListener("mousemove", handleMouseMove);
             document.removeEventListener("mouseup", handleMouseUp);
         };
-    }, [dragState?.startMouseX, dragState?.startMouseY, dragState?.startX, dragState?.startY, onCodeChange]);
+    }, [dragState?.startMouseX, dragState?.startMouseY, dragState?.startX, dragState?.startY, onCodeChange, editorRef]);
 
     return {
         dragState,
+        dragResult,
         scaleRef,
         startNodeDrag,
         startGroupDrag,

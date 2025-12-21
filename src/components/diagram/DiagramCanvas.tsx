@@ -7,11 +7,14 @@ import { useDiagramDrag } from "../../hooks/useDiagramDrag";
 import { DiagramNode } from "./DiagramNode";
 import { DiagramGroup } from "./DiagramGroup";
 import { EdgeOverlay } from "./EdgeOverlay";
+import type { CodeEditorRef } from "../editor/CodeEditor";
 
 interface DiagramCanvasProps {
     result: DiagramOutput;
     code: string;
     onCodeChange: (code: string) => void;
+    /** Editor ref for silent updates during drag (no undo history) */
+    editorRef?: React.RefObject<CodeEditorRef | null>;
 }
 
 function ZoomControls() {
@@ -44,9 +47,12 @@ function ZoomControls() {
     );
 }
 
-export function DiagramCanvas({ result, code, onCodeChange }: DiagramCanvasProps) {
-    const { dragState, scaleRef, startNodeDrag, startGroupDrag } =
-        useDiagramDrag({ code, onCodeChange });
+export function DiagramCanvas({ result, code, onCodeChange, editorRef }: DiagramCanvasProps) {
+    const { dragState, dragResult, scaleRef, startNodeDrag, startGroupDrag } =
+        useDiagramDrag({ code, onCodeChange, editorRef });
+
+    // Use dragResult during drag (computed locally), otherwise use the prop result
+    const displayResult = dragResult ?? result;
 
     const handleUnlock = useCallback(
         (nodeId: string, e: React.MouseEvent) => {
@@ -81,19 +87,19 @@ export function DiagramCanvas({ result, code, onCodeChange }: DiagramCanvasProps
                     <div
                         className={`min-w-full min-h-full relative ${dragState ? "cursor-grabbing" : ""}`}
                     >
-                        {result.error && (
-                            <div className="text-red-500 p-4">{result.error}</div>
+                        {displayResult.error && (
+                            <div className="text-red-500 p-4">{displayResult.error}</div>
                         )}
 
-                        {result.nodes && result.edges && (
+                        {displayResult.nodes && displayResult.edges && (
                             <EdgeOverlay
-                                edges={result.edges}
-                                nodes={result.nodes}
+                                edges={displayResult.edges}
+                                nodes={displayResult.nodes}
                                 dragState={dragState}
                             />
                         )}
 
-                        {result.groups?.map((group, index) => {
+                        {displayResult.groups?.map((group, index) => {
                             const isDragging = dragState?.type === "group" && dragState.id === group.id;
                             const x = isDragging ? dragState!.currentX : group.bounds.x;
                             const y = isDragging ? dragState!.currentY : group.bounds.y;
@@ -109,7 +115,7 @@ export function DiagramCanvas({ result, code, onCodeChange }: DiagramCanvasProps
                             );
                         })}
 
-                        {result.nodes?.map((node) => {
+                        {displayResult.nodes?.map((node) => {
                             const isDragging = dragState?.type === "node" && dragState.id === node.id;
                             const x = isDragging ? dragState!.currentX : node.bounds.x;
                             const y = isDragging ? dragState!.currentY : node.bounds.y;

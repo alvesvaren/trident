@@ -1,14 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import * as trident_core from "trident-core";
 import type { DiagramOutput } from "./types/diagram";
 import { SplitPane } from "./components/layout/SplitPane";
-import { CodeEditor } from "./components/editor/CodeEditor";
+import { CodeEditor, type CodeEditorRef } from "./components/editor/CodeEditor";
 import { Toolbar } from "./components/editor/Toolbar";
 import { DiagramCanvas } from "./components/diagram/DiagramCanvas";
 
 function App() {
   const [code, setCode] = useState("");
   const [result, setResult] = useState<DiagramOutput>({});
+  const editorRef = useRef<CodeEditorRef | null>(null);
 
   useEffect(() => {
     const start = performance.now();
@@ -25,14 +26,15 @@ function App() {
       left={
         <>
           <div style={{ flex: 1, overflow: "hidden" }}>
-            <CodeEditor value={code} onChange={setCode} />
+            <CodeEditor ref={editorRef} value={code} onChange={setCode} />
           </div>
           <Toolbar code={code} onCodeChange={setCode} />
         </>
       }
-      right={<DiagramCanvas result={result} code={code} onCodeChange={setCode} />}
+      right={<DiagramCanvas result={result} code={code} onCodeChange={setCode} editorRef={editorRef} />}
     />
   );
 }
 
 export default App;
+
