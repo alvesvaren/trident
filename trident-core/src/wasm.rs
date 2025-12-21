@@ -45,17 +45,16 @@ pub fn compile_diagram(input: &str) -> String {
         Ok(diagram) => diagram,
         Err(e) => {
             console_error(&format!("Error compiling file: {:?}", e));
-            // CompileError doesn't have line info, so we mark line 1
             let error_output = DiagramOutput {
                 groups: vec![],
                 nodes: vec![],
                 edges: vec![],
                 error: Some(ErrorInfo {
                     message: e.msg.clone(),
-                    line: 1,
-                    column: 1,
-                    end_line: 1,
-                    end_column: 1000, // Highlight a large section
+                    line: e.line,
+                    column: e.col,
+                    end_line: e.line,
+                    end_column: 1000, // Highlight the whole line
                 }),
             };
             return serde_json::to_string(&error_output).unwrap();

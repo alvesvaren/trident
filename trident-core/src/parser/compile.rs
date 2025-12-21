@@ -77,11 +77,13 @@ pub struct Edge {
 #[derive(Debug, Clone, Serialize)]
 pub struct CompileError {
     pub msg: String,
+    pub line: usize,  // 1-based line number
+    pub col: usize,   // 1-based column (usually 1)
 }
 
 impl std::fmt::Display for CompileError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Compile error: {}", self.msg)
+        write!(f, "Compile error at {}:{}: {}", self.line, self.col, self.msg)
     }
 }
 impl std::error::Error for CompileError {}
@@ -107,6 +109,7 @@ struct PendingEdge {
     arrow: String,
     label: Option<String>,
     order: usize,
+    line: usize,  // For error reporting
 }
 
 struct CompileCtx {
@@ -215,6 +218,8 @@ impl CompileCtx {
             if self.group_by_ident.contains_key(id) {
                 return Err(CompileError {
                     msg: format!("duplicate group identifier: {}", id.0),
+                    line: g.span.map(|s| s.start_line).unwrap_or(1),
+                    col: 1,
                 });
             }
         }
@@ -240,6 +245,8 @@ impl CompileCtx {
         if self.node_by_ident.contains_key(&n.id) {
             return Err(CompileError {
                 msg: format!("duplicate node identifier: {}", n.id.0),
+                line: n.span.map(|s| s.start_line).unwrap_or(1),
+                col: 1,
             });
         }
 
@@ -269,6 +276,7 @@ impl CompileCtx {
             arrow: r.arrow.clone(),
             label: r.label.clone(),
             order,
+            line: r.span.map(|s| s.start_line).unwrap_or(1),
         });
         Ok(())
     }
@@ -277,9 +285,13 @@ impl CompileCtx {
         for pe in self.pending_edges.drain(..) {
             let from = self.node_by_ident.get(&pe.from).copied().ok_or_else(|| CompileError {
                 msg: format!("edge references unknown node '{}' (from)", pe.from.0),
+                line: pe.line,
+                col: 1,
             })?;
             let to = self.node_by_ident.get(&pe.to).copied().ok_or_else(|| CompileError {
                 msg: format!("edge references unknown node '{}' (to)", pe.to.0),
+                line: pe.line,
+                col: 1,
             })?;
 
             self.edges.push(Edge {
