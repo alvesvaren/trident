@@ -26,7 +26,7 @@ function App() {
       left={
         <>
           <div style={{ flex: 1, overflow: "hidden" }}>
-            <CodeEditor ref={editorRef} value={code} onChange={setCode} />
+            <CodeEditor ref={editorRef} value={code} onChange={setCode} error={result.error} />
           </div>
           <Toolbar code={code} onCodeChange={setCode} />
         </>

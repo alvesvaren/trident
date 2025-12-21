@@ -1,7 +1,8 @@
 import Editor, { type Monaco } from "@monaco-editor/react";
 import type * as monaco from "monaco-editor";
-import { useImperativeHandle, forwardRef, useRef, useCallback } from "react";
+import { useImperativeHandle, forwardRef, useRef, useCallback, useEffect } from "react";
 import { registerSddLanguage } from "../../syntax";
+import type { ErrorInfo } from "../../types/diagram";
 
 export interface CodeEditorRef {
     /** Update the editor content without creating an undo stop (for drag operations) */
@@ -13,11 +14,13 @@ export interface CodeEditorRef {
 interface CodeEditorProps {
     value: string;
     onChange: (value: string) => void;
+    error?: ErrorInfo;
 }
 
 export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
-    function CodeEditor({ value, onChange }, ref) {
+    function CodeEditor({ value, onChange, error }, ref) {
         const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+        const monacoRef = useRef<Monaco | null>(null);
         // Flag to suppress onChange callback during silent updates
         const suppressOnChangeRef = useRef(false);
 
@@ -56,11 +59,39 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
             },
         }), []);
 
+        // Update Monaco markers when error changes
+        useEffect(() => {
+            const editor = editorRef.current;
+            const monacoInstance = monacoRef.current;
+            if (!editor || !monacoInstance) return;
+
+            const model = editor.getModel();
+            if (!model) return;
+
+            if (error) {
+                // Set error marker
+                monacoInstance.editor.setModelMarkers(model, "trident", [
+                    {
+                        severity: monacoInstance.MarkerSeverity.Error,
+                        message: error.message,
+                        startLineNumber: error.line,
+                        startColumn: error.column,
+                        endLineNumber: error.end_line,
+                        endColumn: error.end_column,
+                    },
+                ]);
+            } else {
+                // Clear markers when no error
+                monacoInstance.editor.setModelMarkers(model, "trident", []);
+            }
+        }, [error]);
+
         const handleEditorDidMount = (
             editor: monaco.editor.IStandaloneCodeEditor,
-            _monaco: Monaco
+            monaco: Monaco
         ) => {
             editorRef.current = editor;
+            monacoRef.current = monaco;
         };
 
         const handleChange = useCallback((newValue: string | undefined) => {

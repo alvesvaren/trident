@@ -88,7 +88,7 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
                         className={`min-w-full min-h-full relative ${dragState ? "cursor-grabbing" : ""}`}
                     >
                         {displayResult.error && (
-                            <div className="text-red-500 p-4">{displayResult.error}</div>
+                            <div className="text-red-500 p-4">{displayResult.error.message}</div>
                         )}
 
                         {displayResult.nodes && displayResult.edges && (

@@ -41,10 +41,25 @@ pub struct GroupOutput {
     pub bounds: RectI,
 }
 
+/// Error information for Monaco editor markers
+#[derive(Debug, Clone, Serialize)]
+pub struct ErrorInfo {
+    pub message: String,
+    pub line: usize,      // 1-based line number
+    pub column: usize,    // 1-based column number
+    pub end_line: usize,  // 1-based end line (same as line for single-line errors)
+    pub end_column: usize, // 1-based end column
+}
+
 /// The combined output sent to React
 #[derive(Debug, Clone, Serialize)]
 pub struct DiagramOutput {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub groups: Vec<GroupOutput>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub nodes: Vec<NodeOutput>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub edges: Vec<EdgeOutput>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<ErrorInfo>,
 }

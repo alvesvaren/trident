@@ -6,7 +6,7 @@ use wasm_bindgen::prelude::*;
 use serde_json::to_string;
 
 use crate::layout::{layout_diagram, LayoutConfig, RectI};
-use crate::output::{DiagramOutput, NodeOutput, EdgeOutput, GroupOutput};
+use crate::output::{DiagramOutput, NodeOutput, EdgeOutput, GroupOutput, ErrorInfo};
 use crate::parser::{self, PointI};
 
 #[wasm_bindgen]
@@ -26,14 +26,39 @@ pub fn compile_diagram(input: &str) -> String {
         Ok(ast) => ast,
         Err(e) => {
             console_error(&format!("Error parsing file: {:?}", e));
-            return "{\"error\": \"Parsing error\"}".to_string();
+            let error_output = DiagramOutput {
+                groups: vec![],
+                nodes: vec![],
+                edges: vec![],
+                error: Some(ErrorInfo {
+                    message: e.msg.clone(),
+                    line: e.line,
+                    column: e.col,
+                    end_line: e.line,
+                    end_column: e.col + 1, // Highlight at least one character
+                }),
+            };
+            return serde_json::to_string(&error_output).unwrap();
         }
     };
     let diagram = match parser::compile(&ast) {
         Ok(diagram) => diagram,
         Err(e) => {
             console_error(&format!("Error compiling file: {:?}", e));
-            return "{\"error\": \"Compiling error\"}".to_string();
+            // CompileError doesn't have line info, so we mark line 1
+            let error_output = DiagramOutput {
+                groups: vec![],
+                nodes: vec![],
+                edges: vec![],
+                error: Some(ErrorInfo {
+                    message: e.msg.clone(),
+                    line: 1,
+                    column: 1,
+                    end_line: 1,
+                    end_column: 1000, // Highlight a large section
+                }),
+            };
+            return serde_json::to_string(&error_output).unwrap();
         }
     };
     
@@ -82,7 +107,7 @@ pub fn compile_diagram(input: &str) -> String {
         }
     }).collect();
     
-    let output = DiagramOutput { groups, nodes, edges };
+    let output = DiagramOutput { groups, nodes, edges, error: None };
     to_string(&output).unwrap()
 }
 

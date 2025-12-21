@@ -34,11 +34,20 @@ export interface DiagramGroup {
     bounds: Bounds;
 }
 
+/** Error information for Monaco editor markers */
+export interface ErrorInfo {
+    message: string;
+    line: number;       // 1-based line number
+    column: number;     // 1-based column number
+    end_line: number;   // 1-based end line
+    end_column: number; // 1-based end column
+}
+
 export interface DiagramOutput {
     groups?: DiagramGroup[];
     nodes?: DiagramNode[];
     edges?: DiagramEdge[];
-    error?: string;
+    error?: ErrorInfo;
 }
 
 /** Drag state for tracking node/group dragging */
