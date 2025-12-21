@@ -55,9 +55,9 @@ fn emit_group(g: &GroupAst, indent: usize, out: &mut String) {
     
     // Group header
     if let Some(id) = &g.id {
-        out.push_str(&format!("{}group {}\n", ind, id.0));
+        out.push_str(&format!("{}group {} ", ind, id.0));
     } else {
-        out.push_str(&format!("{}group\n", ind));
+        out.push_str(&format!("{}group ", ind));
     }
     
     // Opening brace
@@ -92,8 +92,7 @@ fn emit_class(c: &ClassAst, indent: usize, out: &mut String) {
     // If class has pos or body_lines, emit with block
     if c.pos.is_some() || !c.body_lines.is_empty() {
         out.push_str(&header);
-        out.push('\n');
-        out.push_str(&format!("{}{{\n", ind));
+        out.push_str(&format!(" {{\n"));
         
         // @pos if present
         if let Some(pos) = &c.pos {
