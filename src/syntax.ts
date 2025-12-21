@@ -229,7 +229,8 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
 
   // 4) Completion provider (keywords, snippets, relations)
   monacoApi.languages.registerCompletionItemProvider(TRIDENT_ID, {
-    triggerCharacters: ["-", ".", "<", ">", " "],
+    // Trigger on arrow chars, space, and all letters for symbol completion
+    triggerCharacters: ["-", ".", "<", ">", " ", ..."abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"],
     provideCompletionItems: (model, position) => {
       const word = model.getWordUntilPosition(position);
       const range: monaco.IRange = {
@@ -245,15 +246,16 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
 
       const suggestions: monaco.languages.CompletionItem[] = [];
 
-      // Check if we're after an arrow (suggest defined symbols)
-      const arrowMatch = textBeforeCursor.match(/(-->|<--|<\|--|--\|>|\.\.>|<\.\.|---|o--|\*--|\.\.)[\s]*$/);
-      if (arrowMatch) {
-        // Get symbols from current document
-        const source = model.getValue();
-        try {
-          const symbolsJson = trident_core.get_symbols(source);
-          const symbols: string[] = JSON.parse(symbolsJson);
-          for (const sym of symbols) {
+      // Always add matching symbols when typing an identifier
+      // This helps with both sides of relations (A --> B) and standalone references
+      const source = model.getValue();
+      try {
+        const symbolsJson = trident_core.get_symbols(source);
+        const symbols: string[] = JSON.parse(symbolsJson);
+        const lowerWord = word.word.toLowerCase();
+        for (const sym of symbols) {
+          // Show all symbols if no word typed, or filter by prefix match
+          if (word.word === "" || sym.toLowerCase().startsWith(lowerWord)) {
             suggestions.push({
               label: sym,
               kind: monacoApi.languages.CompletionItemKind.Reference,
@@ -263,10 +265,12 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
               sortText: "0" + sym, // Sort symbols first
             });
           }
-        } catch {
-          // Ignore parse errors
         }
+      } catch {
+        // Ignore parse errors
       }
+
+
 
       // Check if we're typing an arrow (after identifier and space)
       const arrowTypingMatch = textBeforeCursor.match(/[A-Za-z_][A-Za-z0-9_]*[\s]+([-.<>|*o]*)$/);
