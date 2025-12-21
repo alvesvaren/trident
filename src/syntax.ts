@@ -132,14 +132,14 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
     rules: [
       // Keywords
       { token: "keyword", foreground: "C586C0" },
-      { token: "keyword.type", foreground: "4EC9B0", fontStyle: "bold" },  // Node kinds in teal
-      { token: "keyword.modifier", foreground: "569CD6" },  // Modifiers in blue
+      { token: "keyword.type", foreground: "C586C0" },  // Node kinds in teal
+      { token: "keyword.modifier", foreground: "C586C0" },  // Modifiers in blue
 
       // Annotations/directives
-      { token: "annotation", foreground: "DCDCAA" },
+      { token: "annotation", foreground: "C586C0" },
 
       // Other tokens
-      { token: "comment", foreground: "6A9955" },
+      { token: "comment", foreground: "777777" },
       { token: "string", foreground: "CE9178" },
       { token: "number", foreground: "B5CEA8" },
       { token: "operator", foreground: "D4D4D4" },
