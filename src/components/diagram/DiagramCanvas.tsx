@@ -1,6 +1,6 @@
 import { useCallback, useRef, useMemo, useState, useEffect } from "react";
 import { TransformWrapper, TransformComponent, useControls } from "react-zoom-pan-pinch";
-import { ZoomIn, ZoomOut, RotateCcw, Download, Image, Home, Focus, Maximize2, Minimize2 } from "lucide-react";
+import { ZoomIn, ZoomOut, RotateCcw, Download, Image, Home, Focus, Maximize2, Minimize2, Sun, Moon } from "lucide-react";
 import * as trident_core from "trident-core";
 import type { DiagramOutput } from "../../types/diagram";
 import { useDiagramDrag } from "../../hooks/useDiagramDrag";
@@ -8,6 +8,7 @@ import { SVGNode } from "./SVGNode";
 import { SVGGroup } from "./SVGGroup";
 import { EdgeDefs, SVGEdges } from "./SVGEdges";
 import type { CodeEditorRef } from "../editor/CodeEditor";
+import { useTheme } from "../../hooks/useTheme";
 
 interface DiagramCanvasProps {
     result: DiagramOutput;
@@ -22,9 +23,11 @@ interface ZoomControlsProps {
     onExportPNG: () => void;
     containerRef: React.RefObject<HTMLDivElement | null>;
     svgViewport: { x: number; y: number; width: number; height: number };
+    resolvedTheme: "light" | "dark";
+    onToggleTheme: () => void;
 }
 
-function ZoomControls({ onExportSVG, onExportPNG, containerRef, svgViewport }: ZoomControlsProps) {
+function ZoomControls({ onExportSVG, onExportPNG, containerRef, svgViewport, resolvedTheme, onToggleTheme }: ZoomControlsProps) {
     const { zoomIn, zoomOut, resetTransform, centerView, setTransform } = useControls();
     const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -77,62 +80,115 @@ function ZoomControls({ onExportSVG, onExportPNG, containerRef, svgViewport }: Z
         <div className="absolute top-3 right-3 z-20 flex gap-1">
             <button
                 onClick={handleFitToScreen}
-                className="p-2 bg-neutral-800 border border-neutral-700 rounded text-neutral-300 hover:bg-neutral-700 transition-colors"
+                className="p-2 rounded transition-colors"
+                style={{
+                    backgroundColor: "var(--control-bg)",
+                    border: "1px solid var(--control-border)",
+                    color: "var(--control-text)",
+                }}
                 title="Fit to Screen"
             >
                 <Home size={16} />
             </button>
             <button
                 onClick={handleResetScale}
-                className="p-2 bg-neutral-800 border border-neutral-700 rounded text-neutral-300 hover:bg-neutral-700 transition-colors"
+                className="p-2 rounded transition-colors"
+                style={{
+                    backgroundColor: "var(--control-bg)",
+                    border: "1px solid var(--control-border)",
+                    color: "var(--control-text)",
+                }}
                 title="Reset to 100%"
             >
                 <Focus size={16} />
             </button>
-            <div className="w-px bg-neutral-700 mx-1" />
+            <div className="w-px mx-1" style={{ backgroundColor: "var(--control-border)" }} />
             <button
                 onClick={() => zoomIn()}
-                className="p-2 bg-neutral-800 border border-neutral-700 rounded text-neutral-300 hover:bg-neutral-700 transition-colors"
+                className="p-2 rounded transition-colors"
+                style={{
+                    backgroundColor: "var(--control-bg)",
+                    border: "1px solid var(--control-border)",
+                    color: "var(--control-text)",
+                }}
                 title="Zoom In"
             >
                 <ZoomIn size={16} />
             </button>
             <button
                 onClick={() => zoomOut()}
-                className="p-2 bg-neutral-800 border border-neutral-700 rounded text-neutral-300 hover:bg-neutral-700 transition-colors"
+                className="p-2 rounded transition-colors"
+                style={{
+                    backgroundColor: "var(--control-bg)",
+                    border: "1px solid var(--control-border)",
+                    color: "var(--control-text)",
+                }}
                 title="Zoom Out"
             >
                 <ZoomOut size={16} />
             </button>
             <button
                 onClick={() => resetTransform()}
-                className="p-2 bg-neutral-800 border border-neutral-700 rounded text-neutral-300 hover:bg-neutral-700 transition-colors"
+                className="p-2 rounded transition-colors"
+                style={{
+                    backgroundColor: "var(--control-bg)",
+                    border: "1px solid var(--control-border)",
+                    color: "var(--control-text)",
+                }}
                 title="Reset View"
             >
                 <RotateCcw size={16} />
             </button>
-            <div className="w-px bg-neutral-700 mx-1" />
+            <div className="w-px mx-1" style={{ backgroundColor: "var(--control-border)" }} />
             <button
                 onClick={onExportSVG}
-                className="p-2 bg-neutral-800 border border-neutral-700 rounded text-neutral-300 hover:bg-neutral-700 transition-colors"
+                className="p-2 rounded transition-colors"
+                style={{
+                    backgroundColor: "var(--control-bg)",
+                    border: "1px solid var(--control-border)",
+                    color: "var(--control-text)",
+                }}
                 title="Export as SVG"
             >
                 <Download size={16} />
             </button>
             <button
                 onClick={onExportPNG}
-                className="p-2 bg-neutral-800 border border-neutral-700 rounded text-neutral-300 hover:bg-neutral-700 transition-colors"
+                className="p-2 rounded transition-colors"
+                style={{
+                    backgroundColor: "var(--control-bg)",
+                    border: "1px solid var(--control-border)",
+                    color: "var(--control-text)",
+                }}
                 title="Export as PNG"
             >
                 <Image size={16} />
             </button>
-            <div className="w-px bg-neutral-700 mx-1" />
+            <div className="w-px mx-1" style={{ backgroundColor: "var(--control-border)" }} />
             <button
                 onClick={handleFullscreen}
-                className="p-2 bg-neutral-800 border border-neutral-700 rounded text-neutral-300 hover:bg-neutral-700 transition-colors"
+                className="p-2 rounded transition-colors"
+                style={{
+                    backgroundColor: "var(--control-bg)",
+                    border: "1px solid var(--control-border)",
+                    color: "var(--control-text)",
+                }}
                 title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
             >
                 {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </button>
+            <div className="w-px mx-1" style={{ backgroundColor: "var(--control-border)" }} />
+            <button
+                onClick={onToggleTheme}
+                className="p-2 rounded transition-colors"
+                style={{
+                    backgroundColor: "var(--control-bg)",
+                    border: "1px solid var(--control-border)",
+                    color: "var(--control-text)",
+                }}
+                title={resolvedTheme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+            >
+                {resolvedTheme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
             </button>
         </div>
     );
@@ -141,8 +197,16 @@ function ZoomControls({ onExportSVG, onExportPNG, containerRef, svgViewport }: Z
 export function DiagramCanvas({ result, code, onCodeChange, editorRef }: DiagramCanvasProps) {
     const svgRef = useRef<SVGSVGElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const { resolvedTheme, setTheme } = useTheme();
     const { dragState, dragResult, scaleRef, startNodeDrag, startGroupDrag } =
         useDiagramDrag({ code, onCodeChange, editorRef });
+
+    const toggleTheme = useCallback(() => {
+        setTheme(resolvedTheme === "dark" ? "light" : "dark");
+    }, [resolvedTheme, setTheme]);
+
+    // Get the current background color for exports
+    const exportBgColor = resolvedTheme === "dark" ? "#171717" : "#f5f5f5";
 
     // Use dragResult during drag (computed locally), otherwise use the prop result
     const displayResult = dragResult ?? result;
@@ -234,7 +298,7 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
         bg.setAttribute("y", String(svgViewport.y));
         bg.setAttribute("width", String(svgViewport.width));
         bg.setAttribute("height", String(svgViewport.height));
-        bg.setAttribute("fill", "#171717");
+        bg.setAttribute("fill", exportBgColor);
         clone.insertBefore(bg, clone.firstChild);
 
         const svgData = new XMLSerializer().serializeToString(clone);
@@ -263,7 +327,7 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
         bg.setAttribute("y", String(svgViewport.y));
         bg.setAttribute("width", String(svgViewport.width));
         bg.setAttribute("height", String(svgViewport.height));
-        bg.setAttribute("fill", "#171717");
+        bg.setAttribute("fill", exportBgColor);
         clone.insertBefore(bg, clone.firstChild);
 
         const svgData = new XMLSerializer().serializeToString(clone);
@@ -299,7 +363,11 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
     }, [svgViewport]);
 
     return (
-        <div ref={containerRef} className="relative h-full bg-neutral-900 overflow-hidden">
+        <div
+            ref={containerRef}
+            className="relative h-full overflow-hidden"
+            style={{ backgroundColor: "var(--canvas-bg)" }}
+        >
             <TransformWrapper
                 initialScale={1}
                 minScale={0.25}
@@ -311,7 +379,14 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
                     scaleRef.current = state.scale;
                 }}
             >
-                <ZoomControls onExportSVG={exportSVG} onExportPNG={exportPNG} containerRef={containerRef} svgViewport={svgViewport} />
+                <ZoomControls
+                    onExportSVG={exportSVG}
+                    onExportPNG={exportPNG}
+                    containerRef={containerRef}
+                    svgViewport={svgViewport}
+                    resolvedTheme={resolvedTheme}
+                    onToggleTheme={toggleTheme}
+                />
                 <TransformComponent
                     wrapperStyle={{ width: "100%", height: "100%" }}
                     contentStyle={{ width: "100%", height: "100%" }}

@@ -4,3 +4,40 @@
   font-family: "Fira Code VF";
   src: url("/FiraCode-VF.woff2") format("woff2");
 }
+
+/* Theme CSS Variables - Dark theme (default) */
+:root,
+[data-theme="dark"] {
+  /* Canvas */
+  --canvas-bg: #171717;
+  --canvas-node-bg: #262626;
+  --canvas-border: #404040;
+  --canvas-text: #9ca3af;
+  --canvas-text-muted: #737373;
+  --canvas-edge: #888888;
+  --canvas-marker-fill: #1e1e1e;
+
+  /* UI Controls */
+  --control-bg: #262626;
+  --control-bg-hover: #404040;
+  --control-border: #404040;
+  --control-text: #d4d4d4;
+}
+
+/* Light theme */
+[data-theme="light"] {
+  /* Canvas */
+  --canvas-bg: #f5f5f5;
+  --canvas-node-bg: #ffffff;
+  --canvas-border: #d4d4d4;
+  --canvas-text: #525252;
+  --canvas-text-muted: #737373;
+  --canvas-edge: #737373;
+  --canvas-marker-fill: #ffffff;
+
+  /* UI Controls */
+  --control-bg: #ffffff;
+  --control-bg-hover: #e5e5e5;
+  --control-border: #d4d4d4;
+  --control-text: #171717;
+}

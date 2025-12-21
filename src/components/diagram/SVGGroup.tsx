@@ -27,8 +27,8 @@ export function SVGGroup({ group, x, y, onMouseDown, exportMode = false }: SVGGr
                 height={group.bounds.h}
                 rx={6}
                 ry={6}
-                fill="#262626"
-                stroke="#404040"
+                fill="var(--canvas-node-bg)"
+                stroke="var(--canvas-border)"
                 strokeWidth={1}
             />
 
@@ -38,14 +38,14 @@ export function SVGGroup({ group, x, y, onMouseDown, exportMode = false }: SVGGr
                 y={-10}
                 width={group.id.length * 7 + labelPadding * 2}
                 height={20}
-                fill="#262626"
+                fill="var(--canvas-node-bg)"
             />
 
             {/* Label text */}
             <text
                 x={8 + labelPadding}
                 y={4}
-                fill="#737373"
+                fill="var(--canvas-text-muted)"
                 fontSize={labelFontSize}
                 fontFamily="ui-monospace, monospace"
             >

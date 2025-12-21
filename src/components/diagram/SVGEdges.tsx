@@ -26,7 +26,7 @@ export function EdgeDefs() {
                 refY="3.5"
                 orient="auto"
             >
-                <polygon points="0 0, 10 3.5, 0 7" fill="#888" />
+                <polygon points="0 0, 10 3.5, 0 7" fill="var(--canvas-edge)" />
             </marker>
             {/* Arrowhead for markerStart - refX at 0 so arrow appears at line start */}
             <marker
@@ -37,7 +37,7 @@ export function EdgeDefs() {
                 refY="3.5"
                 orient="auto"
             >
-                <polygon points="0 3.5, 10 0, 10 7" fill="#888" />
+                <polygon points="0 3.5, 10 0, 10 7" fill="var(--canvas-edge)" />
             </marker>
 
             {/* Triangle (extends) for markerEnd - hollow triangle, line stops at back */}
@@ -51,8 +51,8 @@ export function EdgeDefs() {
             >
                 <polygon
                     points="0 0, 12 5, 0 10"
-                    fill="#1e1e1e"
-                    stroke="#888"
+                    fill="var(--canvas-marker-fill)"
+                    stroke="var(--canvas-edge)"
                     strokeWidth="1.5"
                 />
             </marker>
@@ -67,8 +67,8 @@ export function EdgeDefs() {
             >
                 <polygon
                     points="0 5, 12 0, 12 10"
-                    fill="#1e1e1e"
-                    stroke="#888"
+                    fill="var(--canvas-marker-fill)"
+                    stroke="var(--canvas-edge)"
                     strokeWidth="1.5"
                 />
             </marker>
@@ -82,7 +82,7 @@ export function EdgeDefs() {
                 refY="4"
                 orient="auto"
             >
-                <polygon points="0 4, 6 0, 12 4, 6 8" fill="#888" />
+                <polygon points="0 4, 6 0, 12 4, 6 8" fill="var(--canvas-edge)" />
             </marker>
 
             {/* Empty diamond (aggregation) for markerStart - appears at source node */}
@@ -96,8 +96,8 @@ export function EdgeDefs() {
             >
                 <polygon
                     points="0 4, 6 0, 12 4, 6 8"
-                    fill="#1e1e1e"
-                    stroke="#888"
+                    fill="var(--canvas-marker-fill)"
+                    stroke="var(--canvas-edge)"
                     strokeWidth="1"
                 />
             </marker>
@@ -155,7 +155,7 @@ export function SVGEdges({ edges, nodes, dragState }: SVGEdgesProps) {
                             y1={start.y}
                             x2={end.x}
                             y2={end.y}
-                            stroke="#888"
+                            stroke="var(--canvas-edge)"
                             strokeWidth={1.5}
                             strokeDasharray={isDashed(edge.arrow) ? "5,3" : undefined}
                             markerEnd={markerEnd}
@@ -165,7 +165,7 @@ export function SVGEdges({ edges, nodes, dragState }: SVGEdgesProps) {
                             <text
                                 x={midX}
                                 y={midY - 6}
-                                fill="#aaa"
+                                fill="var(--canvas-text)"
                                 fontSize={11}
                                 fontFamily="ui-monospace, monospace"
                                 textAnchor="middle"

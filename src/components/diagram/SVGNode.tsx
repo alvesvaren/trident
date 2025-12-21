@@ -80,7 +80,7 @@ export function SVGNode({ node, x, y, onMouseDown, onUnlock, exportMode = false 
                 height={node.bounds.h}
                 rx={4}
                 ry={4}
-                fill="#262626"
+                fill="var(--canvas-node-bg)"
                 stroke={borderColor}
                 strokeWidth={1}
             />
@@ -91,7 +91,7 @@ export function SVGNode({ node, x, y, onMouseDown, onUnlock, exportMode = false 
                     x={node.bounds.w / 2}
                     y={stereotypeY}
                     textAnchor="middle"
-                    fill="#9ca3af"
+                    fill="var(--canvas-text)"
                     fontSize={stereotypeFontSize}
                     fontFamily="ui-monospace, monospace"
                     fontStyle="italic"
@@ -125,8 +125,8 @@ export function SVGNode({ node, x, y, onMouseDown, onUnlock, exportMode = false 
                 >
                     <rect x={-2} y={-2} width={16} height={16} fill="transparent" />
                     <svg width={12} height={12} viewBox="0 0 24 24">
-                        <rect x="3" y="11" width="18" height="11" rx="2" fill="none" stroke="#737373" strokeWidth="2" />
-                        <path d="M7 11V7a5 5 0 0110 0v4" fill="none" stroke="#737373" strokeWidth="2" strokeLinecap="round" />
+                        <rect x="3" y="11" width="18" height="11" rx="2" fill="none" stroke="var(--canvas-text-muted)" strokeWidth="2" />
+                        <path d="M7 11V7a5 5 0 0110 0v4" fill="none" stroke="var(--canvas-text-muted)" strokeWidth="2" strokeLinecap="round" />
                     </svg>
                 </g>
             )}
@@ -137,7 +137,7 @@ export function SVGNode({ node, x, y, onMouseDown, onUnlock, exportMode = false 
                 y1={separatorY}
                 x2={node.bounds.w}
                 y2={separatorY}
-                stroke="#404040"
+                stroke="var(--canvas-border)"
                 strokeWidth={1}
             />
 
@@ -147,7 +147,7 @@ export function SVGNode({ node, x, y, onMouseDown, onUnlock, exportMode = false 
                     key={i}
                     x={padding}
                     y={separatorY + 4 + (i + 1) * lineHeight}
-                    fill="#9ca3af"
+                    fill="var(--canvas-text)"
                     fontSize={bodyFontSize}
                     fontFamily="ui-monospace, monospace"
                 >

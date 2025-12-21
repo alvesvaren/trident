@@ -2,13 +2,16 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.tsx";
+import { ThemeProvider } from "./hooks/useTheme.tsx";
 import wasmUrl from "trident-core/trident_core_bg.wasm?url";
 
 // Initialize WASM before rendering
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <ThemeProvider>
+      <App />
+    </ThemeProvider>
   </StrictMode>
 );
 
@@ -17,7 +20,9 @@ if (!import.meta.env.DEV) {
   (init as any)(wasmUrl).then(() => {
     createRoot(document.getElementById("root")!).render(
       <StrictMode>
-        <App />
+        <ThemeProvider>
+          <App />
+        </ThemeProvider>
       </StrictMode>
     );
   });

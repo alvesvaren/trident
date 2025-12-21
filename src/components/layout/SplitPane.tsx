@@ -59,8 +59,9 @@ export function SplitPane({
                 {left}
             </div>
             <div
-                className={`w-1.5 shrink-0 cursor-col-resize transition-colors duration-150 ${isDragging ? "bg-blue-500" : "bg-neutral-700 hover:bg-blue-500"
+                className={`w-1.5 shrink-0 cursor-col-resize transition-colors duration-150 ${isDragging ? "bg-blue-500" : "hover:bg-blue-500"
                     }`}
+                style={{ backgroundColor: isDragging ? undefined : "var(--control-border)" }}
                 onMouseDown={handleMouseDown}
             />
             <div className="flex-1 overflow-hidden">

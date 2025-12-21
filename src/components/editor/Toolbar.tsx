@@ -52,7 +52,13 @@ export function Toolbar({ code, onCodeChange }: ToolbarProps) {
     }, [code, onCodeChange]);
 
     return (
-        <div className="h-12 shrink-0 bg-neutral-800 border-t border-neutral-700 flex items-center px-3 gap-2">
+        <div
+            className="h-12 shrink-0 flex items-center px-3 gap-2"
+            style={{
+                backgroundColor: "var(--control-bg)",
+                borderTop: "1px solid var(--control-border)",
+            }}
+        >
             <input
                 type="file"
                 ref={fileInputRef}
@@ -81,7 +87,12 @@ interface ToolbarButtonProps {
 function ToolbarButton({ icon, label, onClick }: ToolbarButtonProps) {
     return (
         <button
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-700 border border-neutral-600 rounded text-neutral-200 cursor-pointer font-mono text-xs transition-colors hover:bg-neutral-600 active:bg-neutral-800"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded font-mono text-xs transition-colors"
+            style={{
+                backgroundColor: "var(--control-bg)",
+                border: "1px solid var(--control-border)",
+                color: "var(--control-text)",
+            }}
             onClick={onClick}
         >
             {icon}

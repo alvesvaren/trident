@@ -436,5 +436,30 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
       // Keep default editor colors
     },
   });
+
+  monacoApi.editor.defineTheme("trident-light", {
+    base: "vs",
+    inherit: true,
+    rules: [
+      // Keywords
+      { token: "keyword", foreground: "AF00DB" },
+      { token: "keyword.type", foreground: "AF00DB" },
+      { token: "keyword.modifier", foreground: "AF00DB" },
+
+      // Annotations/directives
+      { token: "annotation", foreground: "AF00DB" },
+
+      // Other tokens
+      { token: "comment", foreground: "6A9955" },
+      { token: "string", foreground: "A31515" },
+      { token: "number", foreground: "098658" },
+      { token: "operator", foreground: "000000" },
+      { token: "delimiter", foreground: "000000" },
+      { token: "identifier", foreground: "001080" },
+    ],
+    colors: {
+      // Keep default editor colors
+    },
+  });
 }
 

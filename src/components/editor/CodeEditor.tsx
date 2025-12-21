@@ -3,6 +3,7 @@ import type * as monaco from "monaco-editor";
 import { useImperativeHandle, forwardRef, useRef, useCallback, useEffect } from "react";
 import { registerSddLanguage } from "../../syntax";
 import type { ErrorInfo } from "../../types/diagram";
+import { useTheme } from "../../hooks/useTheme";
 
 export interface CodeEditorRef {
     /** Update the editor content without creating an undo stop (for drag operations) */
@@ -27,6 +28,8 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
         const monacoRef = useRef<Monaco | null>(null);
         // Flag to suppress onChange callback during silent updates
         const suppressOnChangeRef = useRef(false);
+        const { resolvedTheme } = useTheme();
+        const editorTheme = resolvedTheme === "dark" ? "trident-dark" : "trident-light";
 
         useImperativeHandle(ref, () => ({
             silentSetValue: (newValue: string) => {
@@ -121,7 +124,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                 beforeMount={registerSddLanguage}
                 onMount={handleEditorDidMount}
                 language="trident"
-                theme="trident-dark"
+                theme={editorTheme}
                 height="100%"
                 value={value}
                 options={{
