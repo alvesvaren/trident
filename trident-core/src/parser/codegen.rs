@@ -12,6 +12,12 @@ const INDENT: &str = "    "; // 4 spaces
 /// Emit the entire file AST back to source code
 pub fn emit_file(ast: &FileAst) -> String {
     let mut out = String::new();
+    
+    // Emit @layout directive if present
+    if let Some(layout) = &ast.layout {
+        out.push_str(&format!("@layout: {}\n", layout));
+    }
+    
     for stmt in &ast.items {
         emit_stmt(stmt, 0, &mut out);
     }

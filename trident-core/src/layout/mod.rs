@@ -1,22 +1,16 @@
-// sdd_layout.rs
+// Layout module for Trident diagrams.
 //
-// Graph-driven deterministic layouter for Diagram.
-//
-// Goals:
-// - Deterministic: no randomness, no time budgets
-// - Manual + auto: any node/group with pos is fixed (local to parent)
-// - Deepest-first: layout children, then treat child groups as boxes
-// - Graph-driven placement: place connected nodes near each other
-// - No overlap (in local coordinates)
-// - Produces local positions for ALL groups/nodes (fills in pos=None)
+// This module provides layout algorithms for positioning diagram elements.
+// Available layout algorithms:
+// - "hierarchical" (default): Graph-driven layout that places connected nodes closer together
+// - "grid": Simple left-to-right, top-to-bottom grid layout
 //
 // Submodules:
 // - spatial_grid: O(1) overlap detection
-// - adjacency: edge weight computation
-// - placement: graph-driven placement algorithm
-//
-// Output:
-// - LayoutResult with world positions + sizes + group bboxes.
+// - adjacency: Edge weight computation
+// - placement: Graph-driven placement algorithm
+// - graph_driven: Default hierarchical layout
+// - grid: Simple grid layout
 
 use std::collections::HashMap;
 
@@ -24,11 +18,11 @@ use crate::parser::{PointI, Diagram, GroupId, NodeId};
 use serde::Serialize;
 
 mod spatial_grid;
-mod adjacency;
-mod placement;
+pub mod adjacency;
+pub mod placement;
+pub mod algorithms;
 
-use adjacency::Adjacency;
-use placement::layout_group_children_graph_driven;
+pub use algorithms::{GraphDrivenLayout, layout_graph_driven, GridLayout, layout_grid};
 
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize)]
@@ -118,18 +112,17 @@ pub trait LayoutStrategy {
     fn layout(&self, diagram: &Diagram, cfg: &LayoutConfig) -> LayoutResult;
 }
 
-/// Default graph-driven hierarchical layout implementation.
-pub struct GraphDrivenLayout;
-
-impl LayoutStrategy for GraphDrivenLayout {
-    fn layout(&self, diagram: &Diagram, cfg: &LayoutConfig) -> LayoutResult {
-        layout_diagram_internal(diagram, cfg)
+/// Main entry point - dispatches to the appropriate layout algorithm.
+/// 
+/// # Arguments
+/// * `diagram` - The diagram to layout
+/// * `cfg` - Layout configuration
+/// * `algorithm` - Layout algorithm name: "hierarchical" (default) or "grid"
+pub fn layout_diagram(diagram: &Diagram, cfg: &LayoutConfig, algorithm: &str) -> LayoutResult {
+    match algorithm {
+        "grid" => layout_grid(diagram, cfg),
+        "hierarchical" | _ => layout_graph_driven(diagram, cfg),
     }
-}
-
-/// Main entry point - uses the default graph-driven layout.
-pub fn layout_diagram(diagram: &Diagram, cfg: &LayoutConfig) -> LayoutResult {
-    layout_diagram_internal(diagram, cfg)
 }
 
 /// Layout with a custom strategy.
@@ -141,113 +134,13 @@ pub fn layout_diagram_with_strategy<S: LayoutStrategy>(
     strategy.layout(diagram, cfg)
 }
 
-/// Internal implementation of the graph-driven layout.
-fn layout_diagram_internal(diagram: &Diagram, cfg: &LayoutConfig) -> LayoutResult {
-    // We'll fill these in for all nodes. Root is fixed at (0,0) local/world.
-    let mut group_local_pos: HashMap<GroupId, PointI> = HashMap::new();
-    let mut node_local_pos: HashMap<NodeId, PointI> = HashMap::new();
-
-    group_local_pos.insert(diagram.root, PointI { x: 0, y: 0 });
-
-    // Build adjacency from edges for graph-driven placement
-    let adjacency = Adjacency::from_diagram(diagram);
-
-    // Layout groups bottom-up (children first). Our compiler creates parents before children,
-    // but for layout we want post-order traversal.
-    let post = post_order_groups(diagram);
-
-    // We also need per-group child sizes during packing.
-    let mut group_local_bounds: HashMap<GroupId, RectI> = HashMap::new();
-
-    // First pass: compute local positions for everything, and local bounds for groups.
-    for gid in post {
-        let g = &diagram.groups[gid.0];
-
-        // Determine this group's own local position:
-        // - If constrained (pos present), respect it.
-        // - Else if root, it's already (0,0).
-        // - Else default (0,0) for now (parent will place it).
-        if gid != diagram.root {
-            let p = g.pos.unwrap_or(PointI { x: 0, y: 0 });
-            group_local_pos.insert(gid, p);
-        }
-
-        // Lay out children within this group using graph-driven placement.
-        // Connected nodes will be placed closer together.
-        layout_group_children_graph_driven(
-            diagram,
-            gid,
-            cfg,
-            &adjacency,
-            &mut group_local_pos,
-            &mut node_local_pos,
-            &group_local_bounds, // contains bounds for child groups already
-        );
-
-        // After children placed, compute this group's local bounds (container box).
-        let bounds = compute_group_local_bounds(
-            diagram,
-            gid,
-            cfg,
-            &group_local_pos,
-            &node_local_pos,
-            &group_local_bounds,
-        );
-        group_local_bounds.insert(gid, bounds);
-    }
-
-    // Second pass: accumulate world positions and compute world bounds.
-    let mut group_world_pos: HashMap<GroupId, PointI> = HashMap::new();
-    let mut node_world_pos: HashMap<NodeId, PointI> = HashMap::new();
-    let mut group_world_bounds: HashMap<GroupId, RectI> = HashMap::new();
-    let mut node_world_bounds: HashMap<NodeId, RectI> = HashMap::new();
-
-    group_world_pos.insert(diagram.root, PointI { x: 0, y: 0 });
-
-    // Traverse groups in pre-order so parents have world pos before children.
-    let pre = pre_order_groups(diagram);
-
-    for gid in pre {
-        let g_local = *group_local_pos.get(&gid).unwrap_or(&PointI { x: 0, y: 0 });
-        let g_world = if gid == diagram.root {
-            PointI { x: 0, y: 0 }
-        } else {
-            let parent = diagram.groups[gid.0].parent.expect("non-root group must have parent");
-            let pw = *group_world_pos.get(&parent).unwrap();
-            PointI { x: pw.x + g_local.x, y: pw.y + g_local.y }
-        };
-
-        group_world_pos.insert(gid, g_world);
-
-        // Convert local bounds -> world bounds
-        let lb = *group_local_bounds.get(&gid).unwrap();
-        let wb = RectI { x: g_world.x + lb.x, y: g_world.y + lb.y, w: lb.w, h: lb.h };
-        group_world_bounds.insert(gid, wb);
-
-        // Nodes directly in this group
-        for &nid in &diagram.groups[gid.0].children_nodes {
-            let n_local = *node_local_pos.get(&nid).unwrap_or(&PointI { x: 0, y: 0 });
-            let n_world = PointI { x: g_world.x + n_local.x, y: g_world.y + n_local.y };
-            node_world_pos.insert(nid, n_world);
-
-            let sz = cfg.node_size;
-            node_world_bounds.insert(nid, RectI { x: n_world.x, y: n_world.y, w: sz.w, h: sz.h });
-        }
-    }
-
-    LayoutResult {
-        group_local_pos,
-        node_local_pos,
-        group_world_pos,
-        node_world_pos,
-        group_world_bounds,
-        node_world_bounds,
-    }
-}
+// ============================================================================
+// Shared Utilities
+// ============================================================================
 
 /// Compute a group's container bounds in LOCAL coordinates, based on children.
 /// This includes padding. If group has no children, returns min_group_size at (0,0).
-fn compute_group_local_bounds(
+pub fn compute_group_local_bounds(
     diagram: &Diagram,
     gid: GroupId,
     cfg: &LayoutConfig,
@@ -302,7 +195,7 @@ fn compute_group_local_bounds(
 
 /// Post-order group traversal: children before parent.
 /// Deterministic order: respects diagram.groups[gid].children_groups order.
-fn post_order_groups(diagram: &Diagram) -> Vec<GroupId> {
+pub fn post_order_groups(diagram: &Diagram) -> Vec<GroupId> {
     fn dfs(diagram: &Diagram, gid: GroupId, out: &mut Vec<GroupId>) {
         let g = &diagram.groups[gid.0];
         for &c in &g.children_groups {
@@ -316,7 +209,7 @@ fn post_order_groups(diagram: &Diagram) -> Vec<GroupId> {
 }
 
 /// Pre-order group traversal: parent before children.
-fn pre_order_groups(diagram: &Diagram) -> Vec<GroupId> {
+pub fn pre_order_groups(diagram: &Diagram) -> Vec<GroupId> {
     fn dfs(diagram: &Diagram, gid: GroupId, out: &mut Vec<GroupId>) {
         out.push(gid);
         let g = &diagram.groups[gid.0];

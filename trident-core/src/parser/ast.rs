@@ -41,8 +41,12 @@ impl std::error::Error for ParseError {}
 
 pub fn parse_file(input: &str) -> Result<FileAst, ParseError> {
     let mut p = Parser::new(input);
+    
+    // Try to parse @layout: directive at the start
+    let layout = p.try_parse_layout()?;
+    
     let items = p.parse_items_until_end()?;
-    Ok(FileAst { items })
+    Ok(FileAst { layout, items })
 }
 
 struct Parser<'a> {
@@ -114,6 +118,38 @@ impl<'a> Parser<'a> {
         } else {
             None
         }
+    }
+
+    /// Try to parse @layout: directive at the start of the file.
+    /// Skips leading comments and empty lines.
+    fn try_parse_layout(&mut self) -> Result<Option<String>, ParseError> {
+        // Save position in case we need to backtrack
+        let start_i = self.i;
+        
+        // Skip leading comments and empty lines
+        while !self.eof() && self.is_comment_or_empty_line() {
+            self.advance();
+        }
+        
+        if self.eof() {
+            self.i = start_i;
+            return Ok(None);
+        }
+        
+        let t = self.current_line_wo_comment().trim();
+        
+        if t.starts_with("@layout:") {
+            let layout_name = t.strip_prefix("@layout:").unwrap().trim().to_string();
+            if layout_name.is_empty() {
+                return self.err(1, "@layout: requires a layout name (e.g., 'hierarchical' or 'grid')");
+            }
+            self.advance();
+            return Ok(Some(layout_name));
+        }
+        
+        // No @layout found, reset position
+        self.i = start_i;
+        Ok(None)
     }
 
     fn parse_items_until_end(&mut self) -> Result<Vec<Stmt>, ParseError> {

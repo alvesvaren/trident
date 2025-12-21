@@ -18,6 +18,8 @@ pub struct CommentAst {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FileAst {
+    /// Layout algorithm to use: "hierarchical" (default) or "grid"
+    pub layout: Option<String>,
     pub items: Vec<Stmt>,
 }
 
