@@ -2,7 +2,7 @@
 //!
 //! Formatting rules:
 //! - 4 spaces for indentation
-//! - Always wrap brackets on their own lines for groups/classes
+//! - Always wrap brackets on their own lines for groups/nodes
 //! - Comments are preserved exactly as-is
 
 use crate::parser::types::*;
@@ -22,7 +22,7 @@ pub fn emit_file(ast: &FileAst) -> String {
 fn emit_stmt(stmt: &Stmt, indent: usize, out: &mut String) {
     match stmt {
         Stmt::Group(g) => emit_group(g, indent, out),
-        Stmt::Class(c) => emit_class(c, indent, out),
+        Stmt::Node(n) => emit_node(n, indent, out),
         Stmt::Relation(r) => emit_relation(r, indent, out),
         Stmt::Comment(c) => emit_comment(c, out),
     }
@@ -77,36 +77,48 @@ fn emit_group(g: &GroupAst, indent: usize, out: &mut String) {
     out.push_str(&format!("{}}}\n", ind));
 }
 
-/// Emit a class definition
-fn emit_class(c: &ClassAst, indent: usize, out: &mut String) {
+/// Emit a node definition (class, interface, enum, etc.)
+fn emit_node(n: &NodeAst, indent: usize, out: &mut String) {
     let ind = indent_str(indent);
     
-    // Class header
-    let mut header = format!("{}class {}", ind, c.id.0);
+    // Build header: [modifiers] <kind> <id> ["label"]
+    let mut header = String::new();
+    header.push_str(&ind);
+    
+    // Emit modifiers first
+    for modifier in &n.modifiers {
+        header.push_str(modifier);
+        header.push(' ');
+    }
+    
+    // Emit kind and id
+    header.push_str(&n.kind);
+    header.push(' ');
+    header.push_str(&n.id.0);
     
     // Label if present
-    if let Some(label) = &c.label {
+    if let Some(label) = &n.label {
         header.push_str(&format!(" \"{}\"", label));
     }
     
-    // If class has pos or body_lines, emit with block
-    if c.pos.is_some() || !c.body_lines.is_empty() {
+    // If node has pos or body_lines, emit with block
+    if n.pos.is_some() || !n.body_lines.is_empty() {
         out.push_str(&header);
-        out.push_str(&format!(" {{\n"));
+        out.push_str(" {\n");
         
         // @pos if present
-        if let Some(pos) = &c.pos {
+        if let Some(pos) = &n.pos {
             emit_pos(pos, indent + 1, out);
         }
         
         // Body lines
-        for line in &c.body_lines {
+        for line in &n.body_lines {
             out.push_str(&format!("{}{}\n", indent_str(indent + 1), line));
         }
         
         out.push_str(&format!("{}}}\n", ind));
     } else {
-        // Simple class without block
+        // Simple node without block
         out.push_str(&header);
         out.push('\n');
     }
@@ -115,7 +127,9 @@ fn emit_class(c: &ClassAst, indent: usize, out: &mut String) {
 /// Emit a relation
 fn emit_relation(r: &RelationAst, indent: usize, out: &mut String) {
     let ind = indent_str(indent);
-    let arrow_str = arrow_to_str(r.arrow);
+    
+    // Convert canonical arrow name to token
+    let arrow_str = token_from_arrow(&r.arrow).unwrap_or("-->");
     
     let mut line = format!("{}{} {} {}", ind, r.from.0, arrow_str, r.to.0);
     
@@ -133,22 +147,6 @@ fn emit_pos(pos: &PointI, indent: usize, out: &mut String) {
     out.push_str(&format!("{}@pos: ({}, {})\n", ind, pos.x, pos.y));
 }
 
-/// Convert Arrow enum to its string representation
-fn arrow_to_str(arrow: Arrow) -> &'static str {
-    match arrow {
-        Arrow::ExtendsLeft => "<|--",
-        Arrow::ExtendsRight => "--|>",
-        Arrow::DepRight => "..>",
-        Arrow::DepLeft => "<..",
-        Arrow::Line => "---",
-        Arrow::AssocRight => "-->",
-        Arrow::AssocLeft => "<--",
-        Arrow::Aggregate => "o--",
-        Arrow::Compose => "*--",
-        Arrow::Dotted => "..",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,7 +161,23 @@ mod tests {
     }
 
     #[test]
-    fn test_roundtrip_class_with_label() {
+    fn test_roundtrip_abstract_class() {
+        let input = "abstract class Bar\n";
+        let ast = parse_file(input).unwrap();
+        let output = emit_file(&ast);
+        assert_eq!(output.trim(), "abstract class Bar");
+    }
+
+    #[test]
+    fn test_roundtrip_interface() {
+        let input = "interface Baz\n";
+        let ast = parse_file(input).unwrap();
+        let output = emit_file(&ast);
+        assert_eq!(output.trim(), "interface Baz");
+    }
+
+    #[test]
+    fn test_roundtrip_node_with_label() {
         let input = "class Foo \"My Label\"\n";
         let ast = parse_file(input).unwrap();
         let output = emit_file(&ast);
@@ -171,7 +185,7 @@ mod tests {
     }
 
     #[test]
-    fn test_roundtrip_class_with_pos() {
+    fn test_roundtrip_node_with_pos() {
         let input = "class Foo {\n    @pos: (10, 20)\n}\n";
         let ast = parse_file(input).unwrap();
         let output = emit_file(&ast);
@@ -185,6 +199,14 @@ mod tests {
         let ast = parse_file(input).unwrap();
         let output = emit_file(&ast);
         assert!(output.contains("A --> B"));
+    }
+
+    #[test]
+    fn test_roundtrip_extends_relation() {
+        let input = "class A\nclass B\nA <|-- B\n";
+        let ast = parse_file(input).unwrap();
+        let output = emit_file(&ast);
+        assert!(output.contains("A <|-- B"));
     }
 
     #[test]

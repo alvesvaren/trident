@@ -3,27 +3,27 @@
 //
 // What this does:
 // - Creates a synthetic root group
-// - Flattens nested GroupAst/ClassAst into indexed vectors with parent pointers
+// - Flattens nested GroupAst/NodeAst into indexed vectors with parent pointers
 // - Enforces global uniqueness:
-//     - class identifiers must be unique
+//     - node identifiers must be unique
 //     - named group identifiers must be unique
-// - Resolves RelationAst endpoints from Ident -> ClassId
+// - Resolves RelationAst endpoints from Ident -> NodeId
 // - Preserves deterministic order using the original traversal order
 //
 // Assumptions:
-// - Uses the AST types from the parser code (Ident, PointI, Arrow, etc.)
+// - Uses the AST types from the parser code (Ident, PointI, etc.)
 // - Layout can be implemented over Diagram directly.
 
 use std::collections::HashMap;
 
-use crate::parser::{Arrow, ClassAst, FileAst, GroupAst, Ident, PointI, RelationAst, Stmt};
-use serde::{Serialize};
+use crate::parser::{FileAst, GroupAst, Ident, NodeAst, PointI, RelationAst, Stmt};
+use serde::Serialize;
 
 #[derive(Debug, Clone)]
 pub struct Diagram {
     pub root: GroupId,
     pub groups: Vec<Group>,
-    pub classes: Vec<Class>,
+    pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
 }
 
@@ -31,7 +31,7 @@ pub struct Diagram {
 pub struct GroupId(pub usize);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize)]
-pub struct ClassId(pub usize);
+pub struct NodeId(pub usize);
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Group {
@@ -41,14 +41,19 @@ pub struct Group {
     pub parent: Option<GroupId>,
     pub pos: Option<PointI>, // local to parent
     pub children_groups: Vec<GroupId>,
-    pub children_classes: Vec<ClassId>,
+    pub children_nodes: Vec<NodeId>,
     /// Stable traversal order index (assigned during compilation).
     pub order: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct Class {
-    pub cid: ClassId,
+pub struct Node {
+    pub nid: NodeId,
+    /// Node kind: "class", "interface", "enum", etc.
+    pub kind: String,
+    /// Modifiers: "abstract", "static", etc.
+    pub modifiers: Vec<String>,
+    /// Unique identifier
     pub id: Ident,
     pub label: Option<String>,
     pub group: GroupId,
@@ -60,9 +65,10 @@ pub struct Class {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Edge {
-    pub from: ClassId,
-    pub to: ClassId,
-    pub arrow: Arrow,
+    pub from: NodeId,
+    pub to: NodeId,
+    /// Arrow canonical name (e.g., "extends_left", "assoc_right")
+    pub arrow: String,
     pub label: Option<String>,
     /// Stable traversal order index.
     pub order: usize,
@@ -89,7 +95,7 @@ pub fn compile(ast: &FileAst) -> Result<Diagram, CompileError> {
     // Walk file statements into root group
     ctx.compile_items_into_group(&ast.items, root)?;
 
-    // Resolve edges after all classes exist
+    // Resolve edges after all nodes exist
     ctx.resolve_edges()?;
 
     Ok(ctx.finish())
@@ -98,18 +104,18 @@ pub fn compile(ast: &FileAst) -> Result<Diagram, CompileError> {
 struct PendingEdge {
     from: Ident,
     to: Ident,
-    arrow: Arrow,
+    arrow: String,
     label: Option<String>,
     order: usize,
 }
 
 struct CompileCtx {
     groups: Vec<Group>,
-    classes: Vec<Class>,
+    nodes: Vec<Node>,
     edges: Vec<Edge>,
 
     // For uniqueness checks and resolving
-    class_by_ident: HashMap<Ident, ClassId>,
+    node_by_ident: HashMap<Ident, NodeId>,
     group_by_ident: HashMap<Ident, GroupId>,
 
     pending_edges: Vec<PendingEdge>,
@@ -121,9 +127,9 @@ impl CompileCtx {
     fn new() -> Self {
         Self {
             groups: Vec::new(),
-            classes: Vec::new(),
+            nodes: Vec::new(),
             edges: Vec::new(),
-            class_by_ident: HashMap::new(),
+            node_by_ident: HashMap::new(),
             group_by_ident: HashMap::new(),
             pending_edges: Vec::new(),
             next_order: 0,
@@ -134,7 +140,7 @@ impl CompileCtx {
         Diagram {
             root: GroupId(0),
             groups: self.groups,
-            classes: self.classes,
+            nodes: self.nodes,
             edges: self.edges,
         }
     }
@@ -159,24 +165,28 @@ impl CompileCtx {
             parent,
             pos,
             children_groups: Vec::new(),
-            children_classes: Vec::new(),
+            children_nodes: Vec::new(),
             order,
         });
         gid
     }
 
-    fn new_class(
+    fn new_node(
         &mut self,
+        kind: String,
+        modifiers: Vec<String>,
         id: Ident,
         label: Option<String>,
         group: GroupId,
         pos: Option<PointI>,
         body_lines: Vec<String>,
-    ) -> ClassId {
-        let cid = ClassId(self.classes.len());
+    ) -> NodeId {
+        let nid = NodeId(self.nodes.len());
         let order = self.alloc_order();
-        self.classes.push(Class {
-            cid,
+        self.nodes.push(Node {
+            nid,
+            kind,
+            modifiers,
             id,
             label,
             group,
@@ -184,14 +194,14 @@ impl CompileCtx {
             body_lines,
             order,
         });
-        cid
+        nid
     }
 
     fn compile_items_into_group(&mut self, items: &[Stmt], parent_gid: GroupId) -> Result<(), CompileError> {
         for stmt in items {
             match stmt {
                 Stmt::Group(g) => self.compile_group(g, parent_gid)?,
-                Stmt::Class(c) => self.compile_class(c, parent_gid)?,
+                Stmt::Node(n) => self.compile_node(n, parent_gid)?,
                 Stmt::Relation(r) => self.collect_relation(r)?,
                 Stmt::Comment(_) => {} // Comments don't affect the diagram
             }
@@ -225,26 +235,28 @@ impl CompileCtx {
         Ok(())
     }
 
-    fn compile_class(&mut self, c: &ClassAst, parent_gid: GroupId) -> Result<(), CompileError> {
-        // Uniqueness check for classes
-        if self.class_by_ident.contains_key(&c.id) {
+    fn compile_node(&mut self, n: &NodeAst, parent_gid: GroupId) -> Result<(), CompileError> {
+        // Uniqueness check for nodes
+        if self.node_by_ident.contains_key(&n.id) {
             return Err(CompileError {
-                msg: format!("duplicate class identifier: {}", c.id.0),
+                msg: format!("duplicate node identifier: {}", n.id.0),
             });
         }
 
-        let cid = self.new_class(
-            c.id.clone(),
-            c.label.clone(),
+        let nid = self.new_node(
+            n.kind.clone(),
+            n.modifiers.clone(),
+            n.id.clone(),
+            n.label.clone(),
             parent_gid,
-            c.pos,
-            c.body_lines.clone(),
+            n.pos,
+            n.body_lines.clone(),
         );
 
-        self.class_by_ident.insert(c.id.clone(), cid);
+        self.node_by_ident.insert(n.id.clone(), nid);
 
         // Link to group
-        self.groups[parent_gid.0].children_classes.push(cid);
+        self.groups[parent_gid.0].children_nodes.push(nid);
 
         Ok(())
     }
@@ -254,7 +266,7 @@ impl CompileCtx {
         self.pending_edges.push(PendingEdge {
             from: r.from.clone(),
             to: r.to.clone(),
-            arrow: r.arrow,
+            arrow: r.arrow.clone(),
             label: r.label.clone(),
             order,
         });
@@ -263,11 +275,11 @@ impl CompileCtx {
 
     fn resolve_edges(&mut self) -> Result<(), CompileError> {
         for pe in self.pending_edges.drain(..) {
-            let from = self.class_by_ident.get(&pe.from).copied().ok_or_else(|| CompileError {
-                msg: format!("edge references unknown class '{}'", pe.from.0),
+            let from = self.node_by_ident.get(&pe.from).copied().ok_or_else(|| CompileError {
+                msg: format!("edge references unknown node '{}' (from)", pe.from.0),
             })?;
-            let to = self.class_by_ident.get(&pe.to).copied().ok_or_else(|| CompileError {
-                msg: format!("edge references unknown class '{}'", pe.to.0),
+            let to = self.node_by_ident.get(&pe.to).copied().ok_or_else(|| CompileError {
+                msg: format!("edge references unknown node '{}' (to)", pe.to.0),
             })?;
 
             self.edges.push(Edge {

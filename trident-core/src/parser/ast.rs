@@ -1,42 +1,29 @@
 // sdd_parser.rs
 //
-// v0.0.1 parser (cleaned):
+// v0.1.0 parser (extensible):
 // - Comments: %% ... (line comments)
 // - group { ... }              (anonymous, not rendered; layout scope)
 // - group IDENT { ... }        (named; visual name = IDENT)
-// - class IDENT ["Display"]    (optionally with block)
-// - class IDENT ["Display"] { ... }
-// - @pos: (INT, INT) allowed only inside the nearest class/group block (fixed, local)
+// - [modifiers] <node_kind> IDENT ["Display"]    (optionally with block)
+//   Examples:
+//     class Foo
+//     abstract class Bar
+//     interface Baz
+//     sealed enum Status
+// - @pos: (INT, INT) allowed only inside the nearest node/group block (fixed, local)
 // - relations can be written with or without spaces:
 //     A-->B
 //     A --> B
 //     A<|--B : label
 //
-// Notes / limitations (intentional for v0.0.1):
+// Notes / limitations:
 // - IDENT: [A-Za-z_][A-Za-z0-9_]*
 // - STRING: "..." (no escapes)
-// - Only one @pos per class/group block (duplicate is error)
+// - Only one @pos per node/group block (duplicate is error)
 // - Relation endpoints must be IDENT (no qualification yet)
 
 use crate::parser::types::*;
-use crate::parser::types::{CommentAst, Span};
 use std::fmt;
-
-impl Arrow {
-    pub const TOKENS: &'static [(&'static str, Arrow)] = &[
-        // IMPORTANT: longer tokens first to avoid partial matches
-        ("<|--", Arrow::ExtendsLeft),
-        ("--|>", Arrow::ExtendsRight),
-        ("..>", Arrow::DepRight),
-        ("<..", Arrow::DepLeft),
-        ("---", Arrow::Line),
-        ("-->", Arrow::AssocRight),
-        ("<--", Arrow::AssocLeft),
-        ("o--", Arrow::Aggregate),
-        ("*--", Arrow::Compose),
-        ("..", Arrow::Dotted),
-    ];
-}
 
 #[derive(Debug, Clone)]
 pub struct ParseError {
@@ -170,9 +157,9 @@ impl<'a> Parser<'a> {
             return Ok(Some(Stmt::Group(g)));
         }
 
-        if starts_with_kw(t, "class") {
-            let c = self.parse_class()?;
-            return Ok(Some(Stmt::Class(c)));
+        // Try to parse as node declaration (with optional modifiers)
+        if let Some(node) = self.try_parse_node()? {
+            return Ok(Some(Stmt::Node(node)));
         }
 
         // Otherwise, relation
@@ -187,6 +174,167 @@ impl<'a> Parser<'a> {
             span: Some(Span { start_line, end_line: start_line }),
             ..rel
         })))
+    }
+
+    /// Try to parse a node declaration: [modifiers] <node_kind> IDENT ["Label"] [{ ... }]
+    fn try_parse_node(&mut self) -> Result<Option<NodeAst>, ParseError> {
+        let t = self.current_line_wo_comment().trim();
+        
+        // Parse modifiers and node kind
+        let mut words: Vec<&str> = Vec::new();
+        let mut rest = t;
+        
+        // Collect leading identifiers (potential modifiers + kind)
+        loop {
+            let (ident_part, after_ident) = take_ident_prefix(rest);
+            match ident_part {
+                Some(ident) => {
+                    words.push(ident);
+                    rest = after_ident.trim_start();
+                }
+                None => break,
+            }
+            
+            // Stop if we hit a string literal, brace, or end
+            if rest.is_empty() || rest.starts_with('"') || rest.starts_with('{') {
+                break;
+            }
+        }
+        
+        // Need at least a node kind and an identifier
+        if words.len() < 2 {
+            return Ok(None);
+        }
+        
+        // Check if the second-to-last word (or any early word) is a known node kind
+        // The last word is always the identifier
+        // Pattern: [modifier...] <kind> <id>
+        
+        let id_str = words.pop().unwrap(); // Last word is the identifier
+        
+        // Find the node kind - it's the last word that matches a known kind
+        // Everything before it is modifiers
+        let mut kind_idx = None;
+        for (i, word) in words.iter().enumerate().rev() {
+            if is_node_kind(word) {
+                kind_idx = Some(i);
+                break;
+            }
+        }
+        
+        let kind_idx = match kind_idx {
+            Some(idx) => idx,
+            None => return Ok(None), // No known node kind found
+        };
+        
+        let modifiers: Vec<String> = words[..kind_idx].iter().map(|s| s.to_string()).collect();
+        let kind = words[kind_idx].to_string();
+        let id = Ident(id_str.to_string());
+        
+        // Parse rest of line
+        self.parse_node_with_parts(modifiers, kind, id, rest)
+    }
+    
+    /// Parse node after modifiers/kind/id are known
+    fn parse_node_with_parts(
+        &mut self,
+        modifiers: Vec<String>,
+        kind: String,
+        id: Ident,
+        mut rest: &str,
+    ) -> Result<Option<NodeAst>, ParseError> {
+        let start_line = self.line_no();
+        
+        // optional label string
+        let mut label: Option<String> = None;
+        if rest.starts_with('"') {
+            let (s, after) = parse_string_prefix(rest).map_err(|msg| ParseError {
+                line: self.line_no(),
+                col: 1,
+                msg,
+            })?;
+            label = Some(s);
+            rest = after.trim();
+        }
+
+        // optional '{' on same line
+        let mut has_lbrace = false;
+        if rest.starts_with('{') {
+            has_lbrace = true;
+            rest = rest[1..].trim();
+        }
+        if !rest.is_empty() {
+            return self.err(1, "unexpected tokens in node declaration");
+        }
+
+        self.advance(); // consume node header
+
+        // no block => empty node
+        if !has_lbrace {
+            // maybe next line is '{' to start block
+            if self.peek_next_nonempty_is_lbrace() {
+                self.consume_required_lbrace("node")?;
+                has_lbrace = true;
+            }
+        }
+
+        if !has_lbrace {
+            // Single-line node declaration
+            return Ok(Some(NodeAst {
+                kind,
+                modifiers,
+                id,
+                label,
+                pos: None,
+                body_lines: Vec::new(),
+                span: Some(Span { start_line, end_line: start_line }),
+            }));
+        }
+
+        let mut pos: Option<PointI> = None;
+        let mut body_lines: Vec<String> = Vec::new();
+
+        loop {
+            if self.eof() {
+                return self.err(1, "unexpected end of file; missing '}' for node");
+            }
+
+            let t = self.current_line_wo_comment().trim();
+            if t.is_empty() {
+                self.advance();
+                continue;
+            }
+            if t == "}" {
+                let end_line = self.line_no();
+                self.advance();
+                return Ok(Some(NodeAst {
+                    kind,
+                    modifiers,
+                    id,
+                    label,
+                    pos,
+                    body_lines,
+                    span: Some(Span { start_line, end_line }),
+                }));
+            }
+
+            if t.starts_with("@pos:") {
+                if pos.is_some() {
+                    return self.err(1, "duplicate @pos in node block");
+                }
+                pos = Some(parse_pos_line(t).map_err(|msg| ParseError {
+                    line: self.line_no(),
+                    col: 1,
+                    msg,
+                })?);
+                self.advance();
+                continue;
+            }
+
+            // opaque line
+            body_lines.push(t.to_string());
+            self.advance();
+        }
     }
 
     // group { ... }
@@ -275,112 +423,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // class IDENT ["Label"] [ "{" ... "}" ]?
-    // allow '{' on same line OR next non-empty line
-    fn parse_class(&mut self) -> Result<ClassAst, ParseError> {
-        let start_line = self.line_no();
-        let t = self.current_line_wo_comment().trim();
-        let mut rest = t.strip_prefix("class").unwrap().trim();
-
-        let (ident_part, after_ident) = take_ident_prefix(rest);
-        let Some(ident) = ident_part else {
-            return self.err(1, "expected class identifier after 'class'");
-        };
-        if !is_ident(ident) {
-            return self.err(1, "invalid class identifier");
-        }
-        let id = Ident(ident.to_string());
-        rest = after_ident.trim();
-
-        // optional label string
-        let mut label: Option<String> = None;
-        if rest.starts_with('"') {
-            let (s, after) = parse_string_prefix(rest).map_err(|msg| ParseError {
-                line: self.line_no(),
-                col: 1,
-                msg,
-            })?;
-            label = Some(s);
-            rest = after.trim();
-        }
-
-        // optional '{' on same line
-        let mut has_lbrace = false;
-        if rest.starts_with('{') {
-            has_lbrace = true;
-            rest = rest[1..].trim();
-        }
-        if !rest.is_empty() {
-            return self.err(1, "unexpected tokens in class declaration");
-        }
-
-        self.advance(); // consume class header
-
-        // no block => empty class
-        if !has_lbrace {
-            // maybe next line is '{' to start block
-            // If next meaningful line is '{', treat it as block start.
-            if self.peek_next_nonempty_is_lbrace() {
-                self.consume_required_lbrace("class")?;
-                has_lbrace = true;
-            }
-        }
-
-        if !has_lbrace {
-            // Single-line class declaration, span is just the header line
-            return Ok(ClassAst {
-                id,
-                label,
-                pos: None,
-                body_lines: Vec::new(),
-                span: Some(Span { start_line, end_line: start_line }),
-            });
-        }
-
-        let mut pos: Option<PointI> = None;
-        let mut body_lines: Vec<String> = Vec::new();
-
-        loop {
-            if self.eof() {
-                return self.err(1, "unexpected end of file; missing '}' for class");
-            }
-
-            let t = self.current_line_wo_comment().trim();
-            if t.is_empty() {
-                self.advance();
-                continue;
-            }
-            if t == "}" {
-                let end_line = self.line_no();
-                self.advance();
-                return Ok(ClassAst {
-                    id,
-                    label,
-                    pos,
-                    body_lines,
-                    span: Some(Span { start_line, end_line }),
-                });
-            }
-
-            if t.starts_with("@pos:") {
-                if pos.is_some() {
-                    return self.err(1, "duplicate @pos in class block");
-                }
-                pos = Some(parse_pos_line(t).map_err(|msg| ParseError {
-                    line: self.line_no(),
-                    col: 1,
-                    msg,
-                })?);
-                self.advance();
-                continue;
-            }
-
-            // opaque line
-            body_lines.push(t.to_string());
-            self.advance();
-        }
-    }
-
     fn parse_relation_line(&self, line: &str) -> Result<RelationAst, ParseError> {
         // Split label on first ':' (if any)
         let (head, label) = match line.split_once(':') {
@@ -406,7 +448,7 @@ impl<'a> Parser<'a> {
 
         Ok(RelationAst {
             from: Ident(from.to_string()),
-            arrow,
+            arrow: arrow.to_string(),
             to: Ident(to.to_string()),
             label,
             span: None, // Span is added by parse_stmt_or_none
@@ -546,12 +588,13 @@ fn parse_pos_line(t: &str) -> Result<PointI, String> {
 }
 
 /// Parses relations with or without spaces.
+/// Returns (from, arrow_canonical_name, to)
 /// Accepts:
 /// - "A-->B"
 /// - "A --> B"
 /// - "A<|--B"
 /// - "A <|-- B"
-fn split_relation_compact(s: &str) -> Option<(&str, Arrow, &str)> {
+fn split_relation_compact(s: &str) -> Option<(&str, &str, &str)> {
     let s = s.trim();
 
     // Fast path: try whitespace split into 3 parts
@@ -560,26 +603,115 @@ fn split_relation_compact(s: &str) -> Option<(&str, Arrow, &str)> {
         if parts.len() == 3 {
             let (a, op, b) = (parts[0], parts[1], parts[2]);
             if is_ident(a) && is_ident(b) {
-                for (tok, arrow) in Arrow::TOKENS {
-                    if *tok == op {
-                        return Some((a, *arrow, b));
-                    }
+                if let Some(arrow_name) = arrow_from_token(op) {
+                    return Some((a, arrow_name, b));
                 }
             }
         }
     }
 
     // Compact path: find any arrow token inside the string
-    for (tok, arrow) in Arrow::TOKENS {
+    for (tok, name) in ARROW_REGISTRY {
         if let Some(pos) = s.find(tok) {
             let left = s[..pos].trim();
             let right = s[pos + tok.len()..].trim();
 
             if is_ident(left) && is_ident(right) {
-                return Some((left, *arrow, right));
+                return Some((left, name, right));
             }
         }
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_simple_class() {
+        let input = "class Foo\n";
+        let ast = parse_file(input).unwrap();
+        assert_eq!(ast.items.len(), 1);
+        match &ast.items[0] {
+            Stmt::Node(n) => {
+                assert_eq!(n.kind, "class");
+                assert_eq!(n.id.0, "Foo");
+                assert!(n.modifiers.is_empty());
+            }
+            _ => panic!("Expected Node"),
+        }
+    }
+
+    #[test]
+    fn test_parse_abstract_class() {
+        let input = "abstract class Bar\n";
+        let ast = parse_file(input).unwrap();
+        assert_eq!(ast.items.len(), 1);
+        match &ast.items[0] {
+            Stmt::Node(n) => {
+                assert_eq!(n.kind, "class");
+                assert_eq!(n.id.0, "Bar");
+                assert_eq!(n.modifiers, vec!["abstract"]);
+            }
+            _ => panic!("Expected Node"),
+        }
+    }
+
+    #[test]
+    fn test_parse_interface() {
+        let input = "interface Baz\n";
+        let ast = parse_file(input).unwrap();
+        assert_eq!(ast.items.len(), 1);
+        match &ast.items[0] {
+            Stmt::Node(n) => {
+                assert_eq!(n.kind, "interface");
+                assert_eq!(n.id.0, "Baz");
+            }
+            _ => panic!("Expected Node"),
+        }
+    }
+
+    #[test]
+    fn test_parse_enum_with_modifiers() {
+        let input = "public sealed enum Status\n";
+        let ast = parse_file(input).unwrap();
+        assert_eq!(ast.items.len(), 1);
+        match &ast.items[0] {
+            Stmt::Node(n) => {
+                assert_eq!(n.kind, "enum");
+                assert_eq!(n.id.0, "Status");
+                assert_eq!(n.modifiers, vec!["public", "sealed"]);
+            }
+            _ => panic!("Expected Node"),
+        }
+    }
+
+    #[test]
+    fn test_parse_relation() {
+        let input = "class A\nclass B\nA --> B\n";
+        let ast = parse_file(input).unwrap();
+        assert_eq!(ast.items.len(), 3);
+        match &ast.items[2] {
+            Stmt::Relation(r) => {
+                assert_eq!(r.from.0, "A");
+                assert_eq!(r.to.0, "B");
+                assert_eq!(r.arrow, "assoc_right");
+            }
+            _ => panic!("Expected Relation"),
+        }
+    }
+
+    #[test]
+    fn test_parse_extends_relation() {
+        let input = "class A\nclass B\nA <|-- B\n";
+        let ast = parse_file(input).unwrap();
+        match &ast.items[2] {
+            Stmt::Relation(r) => {
+                assert_eq!(r.arrow, "extends_left");
+            }
+            _ => panic!("Expected Relation"),
+        }
+    }
 }

@@ -1,9 +1,8 @@
-
 use wasm_bindgen::prelude::*;
 mod parser;
 mod layout;
 use layout::{layout_diagram, LayoutConfig, RectI};
-use parser::{Arrow, PointI};
+use parser::PointI;
 use serde::Serialize;
 use serde_json::to_string;
 
@@ -22,6 +21,10 @@ extern "C" {
 #[derive(Debug, Clone, Serialize)]
 pub struct NodeOutput {
     pub id: String,
+    /// Node kind: "class", "interface", "enum", etc.
+    pub kind: String,
+    /// Modifiers: "abstract", "static", etc.
+    pub modifiers: Vec<String>,
     pub label: Option<String>,
     pub body_lines: Vec<String>,
     pub bounds: RectI,
@@ -36,6 +39,7 @@ pub struct NodeOutput {
 pub struct EdgeOutput {
     pub from: String,
     pub to: String,
+    /// Arrow type as canonical string (e.g., "extends_left", "assoc_right")
     pub arrow: String,
     pub label: Option<String>,
 }
@@ -45,21 +49,6 @@ pub struct EdgeOutput {
 pub struct GroupOutput {
     pub id: String,
     pub bounds: RectI,
-}
-
-fn arrow_to_string(arrow: Arrow) -> String {
-    match arrow {
-        Arrow::ExtendsLeft => "extends_left".to_string(),
-        Arrow::ExtendsRight => "extends_right".to_string(),
-        Arrow::Aggregate => "aggregate".to_string(),
-        Arrow::Compose => "compose".to_string(),
-        Arrow::AssocRight => "assoc_right".to_string(),
-        Arrow::AssocLeft => "assoc_left".to_string(),
-        Arrow::DepRight => "dep_right".to_string(),
-        Arrow::DepLeft => "dep_left".to_string(),
-        Arrow::Line => "line".to_string(),
-        Arrow::Dotted => "dotted".to_string(),
-    }
 }
 
 /// The combined output sent to React
@@ -86,13 +75,13 @@ pub fn compile_diagram(input: &str) -> String {
             return "{\"error\": \"Compiling error\"}".to_string();
         }
     };
-    let layout = layout_diagram(&diagram, &LayoutConfig::default());
+    let layout_result = layout_diagram(&diagram, &LayoutConfig::default());
     
     // Build groups (only named groups, skip root and anonymous)
     let groups: Vec<GroupOutput> = diagram.groups.iter()
         .filter(|g| g.id.is_some() && g.gid != diagram.root)
         .filter_map(|g| {
-            let bounds = layout.group_world_bounds.get(&g.gid).copied()?;
+            let bounds = layout_result.group_world_bounds.get(&g.gid).copied()?;
             Some(GroupOutput {
                 id: g.id.as_ref()?.0.clone(),
                 bounds,
@@ -101,28 +90,30 @@ pub fn compile_diagram(input: &str) -> String {
         .collect();
     
     // Build nodes
-    let nodes: Vec<NodeOutput> = diagram.classes.iter().map(|c| {
-        let bounds = layout.class_world_bounds.get(&c.cid).copied().unwrap_or(RectI { x: 0, y: 0, w: 0, h: 0 });
+    let nodes: Vec<NodeOutput> = diagram.nodes.iter().map(|n| {
+        let bounds = layout_result.node_world_bounds.get(&n.nid).copied().unwrap_or(RectI { x: 0, y: 0, w: 0, h: 0 });
         // Get parent group's world position for local coordinate calculation
-        let parent_world = layout.group_world_pos.get(&c.group).copied().unwrap_or(PointI { x: 0, y: 0 });
+        let parent_world = layout_result.group_world_pos.get(&n.group).copied().unwrap_or(PointI { x: 0, y: 0 });
         NodeOutput {
-            id: c.id.0.clone(),
-            label: c.label.clone(),
-            body_lines: c.body_lines.clone(),
+            id: n.id.0.clone(),
+            kind: n.kind.clone(),
+            modifiers: n.modifiers.clone(),
+            label: n.label.clone(),
+            body_lines: n.body_lines.clone(),
             bounds,
-            has_pos: c.pos.is_some(),
+            has_pos: n.pos.is_some(),
             parent_offset: parent_world,
         }
     }).collect();
     
     // Build edges
     let edges: Vec<EdgeOutput> = diagram.edges.iter().map(|e| {
-        let from_id = diagram.classes[e.from.0].id.0.clone();
-        let to_id = diagram.classes[e.to.0].id.0.clone();
+        let from_id = diagram.nodes[e.from.0].id.0.clone();
+        let to_id = diagram.nodes[e.to.0].id.0.clone();
         EdgeOutput {
             from: from_id,
             to: to_id,
-            arrow: arrow_to_string(e.arrow),
+            arrow: e.arrow.clone(),
             label: e.label.clone(),
         }
     }).collect();
@@ -131,7 +122,7 @@ pub fn compile_diagram(input: &str) -> String {
     to_string(&output).unwrap()
 }
 
-/// Update a class position and return the new source code
+/// Update a node position and return the new source code
 #[wasm_bindgen]
 pub fn update_class_pos(source: &str, class_id: &str, x: i32, y: i32) -> String {
     let mut ast = match parser::parse_file(source) {
@@ -143,10 +134,10 @@ pub fn update_class_pos(source: &str, class_id: &str, x: i32, y: i32) -> String 
     };
     
     let new_pos = parser::PointI { x, y };
-    if parser::update_class_position(&mut ast, class_id, new_pos) {
+    if parser::update_node_position(&mut ast, class_id, new_pos) {
         parser::emit_file(&ast)
     } else {
-        console_error(&format!("Class '{}' not found", class_id));
+        console_error(&format!("Node '{}' not found", class_id));
         source.to_string()
     }
 }
@@ -175,7 +166,7 @@ pub fn update_group_pos(source: &str, group_id: &str, group_index: usize, x: i32
     }
 }
 
-/// Remove a class position (unlock it for auto-layout) and return the new source code
+/// Remove a node position (unlock it for auto-layout) and return the new source code
 #[wasm_bindgen]
 pub fn remove_class_pos(source: &str, class_id: &str) -> String {
     let mut ast = match parser::parse_file(source) {
@@ -186,15 +177,15 @@ pub fn remove_class_pos(source: &str, class_id: &str) -> String {
         }
     };
     
-    if parser::remove_class_position(&mut ast, class_id) {
+    if parser::remove_node_position(&mut ast, class_id) {
         parser::emit_file(&ast)
     } else {
-        console_error(&format!("Class '{}' not found", class_id));
+        console_error(&format!("Node '{}' not found", class_id));
         source.to_string()
     }
 }
 
-/// Remove all positions from all classes and groups (unlock everything)
+/// Remove all positions from all nodes and groups (unlock everything)
 #[wasm_bindgen]
 pub fn remove_all_pos(source: &str) -> String {
     let mut ast = match parser::parse_file(source) {

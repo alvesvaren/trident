@@ -8,7 +8,7 @@
 // - Deepest-first: layout children, then treat child groups as boxes
 // - Graph-driven placement: place connected nodes near each other
 // - No overlap (in local coordinates)
-// - Produces local positions for ALL groups/classes (fills in pos=None)
+// - Produces local positions for ALL groups/nodes (fills in pos=None)
 //
 // Submodules:
 // - spatial_grid: O(1) overlap detection
@@ -20,7 +20,7 @@
 
 use std::collections::HashMap;
 
-use crate::parser::{PointI, Diagram, GroupId, ClassId};
+use crate::parser::{PointI, Diagram, GroupId, NodeId};
 use serde::Serialize;
 
 mod spatial_grid;
@@ -73,8 +73,8 @@ pub struct LayoutConfig {
     pub gap: i32,
     /// Max row width before wrapping. Small graphs can ignore.
     pub max_row_w: i32,
-    /// Size for classes (v0.0.1: constant).
-    pub class_size: SizeI,
+    /// Size for nodes.
+    pub node_size: SizeI,
     /// Minimum size for groups (even if empty).
     pub min_group_size: SizeI,
 }
@@ -85,7 +85,7 @@ impl Default for LayoutConfig {
             group_padding: 24,
             gap: 24,
             max_row_w: 1000,
-            class_size: SizeI { w: 220, h: 120 },
+            node_size: SizeI { w: 220, h: 120 },
             min_group_size: SizeI { w: 200, h: 120 },
         }
     }
@@ -93,25 +93,59 @@ impl Default for LayoutConfig {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LayoutResult {
-    /// Local positions (relative to parent group) for all groups/classes.
+    /// Local positions (relative to parent group) for all groups/nodes.
     pub group_local_pos: HashMap<GroupId, PointI>,
-    pub class_local_pos: HashMap<ClassId, PointI>,
+    pub node_local_pos: HashMap<NodeId, PointI>,
 
-    /// World positions for all groups/classes (after accumulation).
+    /// World positions for all groups/nodes (after accumulation).
     pub group_world_pos: HashMap<GroupId, PointI>,
-    pub class_world_pos: HashMap<ClassId, PointI>,
+    pub node_world_pos: HashMap<NodeId, PointI>,
 
     /// Group bounds in world coordinates (including padding).
     pub group_world_bounds: HashMap<GroupId, RectI>,
 
-    /// Class bounds in world coordinates.
-    pub class_world_bounds: HashMap<ClassId, RectI>,
+    /// Node bounds in world coordinates.
+    pub node_world_bounds: HashMap<NodeId, RectI>,
 }
 
+// ============================================================================
+// Layout Strategy Trait - Dependency Inversion
+// ============================================================================
+
+/// Trait for layout strategies - enables dependency inversion.
+/// Implement this trait to create custom layout algorithms.
+pub trait LayoutStrategy {
+    fn layout(&self, diagram: &Diagram, cfg: &LayoutConfig) -> LayoutResult;
+}
+
+/// Default graph-driven hierarchical layout implementation.
+pub struct GraphDrivenLayout;
+
+impl LayoutStrategy for GraphDrivenLayout {
+    fn layout(&self, diagram: &Diagram, cfg: &LayoutConfig) -> LayoutResult {
+        layout_diagram_internal(diagram, cfg)
+    }
+}
+
+/// Main entry point - uses the default graph-driven layout.
 pub fn layout_diagram(diagram: &Diagram, cfg: &LayoutConfig) -> LayoutResult {
+    layout_diagram_internal(diagram, cfg)
+}
+
+/// Layout with a custom strategy.
+pub fn layout_diagram_with_strategy<S: LayoutStrategy>(
+    diagram: &Diagram,
+    cfg: &LayoutConfig,
+    strategy: &S,
+) -> LayoutResult {
+    strategy.layout(diagram, cfg)
+}
+
+/// Internal implementation of the graph-driven layout.
+fn layout_diagram_internal(diagram: &Diagram, cfg: &LayoutConfig) -> LayoutResult {
     // We'll fill these in for all nodes. Root is fixed at (0,0) local/world.
     let mut group_local_pos: HashMap<GroupId, PointI> = HashMap::new();
-    let mut class_local_pos: HashMap<ClassId, PointI> = HashMap::new();
+    let mut node_local_pos: HashMap<NodeId, PointI> = HashMap::new();
 
     group_local_pos.insert(diagram.root, PointI { x: 0, y: 0 });
 
@@ -146,7 +180,7 @@ pub fn layout_diagram(diagram: &Diagram, cfg: &LayoutConfig) -> LayoutResult {
             cfg,
             &adjacency,
             &mut group_local_pos,
-            &mut class_local_pos,
+            &mut node_local_pos,
             &group_local_bounds, // contains bounds for child groups already
         );
 
@@ -156,7 +190,7 @@ pub fn layout_diagram(diagram: &Diagram, cfg: &LayoutConfig) -> LayoutResult {
             gid,
             cfg,
             &group_local_pos,
-            &class_local_pos,
+            &node_local_pos,
             &group_local_bounds,
         );
         group_local_bounds.insert(gid, bounds);
@@ -164,9 +198,9 @@ pub fn layout_diagram(diagram: &Diagram, cfg: &LayoutConfig) -> LayoutResult {
 
     // Second pass: accumulate world positions and compute world bounds.
     let mut group_world_pos: HashMap<GroupId, PointI> = HashMap::new();
-    let mut class_world_pos: HashMap<ClassId, PointI> = HashMap::new();
+    let mut node_world_pos: HashMap<NodeId, PointI> = HashMap::new();
     let mut group_world_bounds: HashMap<GroupId, RectI> = HashMap::new();
-    let mut class_world_bounds: HashMap<ClassId, RectI> = HashMap::new();
+    let mut node_world_bounds: HashMap<NodeId, RectI> = HashMap::new();
 
     group_world_pos.insert(diagram.root, PointI { x: 0, y: 0 });
 
@@ -190,24 +224,24 @@ pub fn layout_diagram(diagram: &Diagram, cfg: &LayoutConfig) -> LayoutResult {
         let wb = RectI { x: g_world.x + lb.x, y: g_world.y + lb.y, w: lb.w, h: lb.h };
         group_world_bounds.insert(gid, wb);
 
-        // Classes directly in this group
-        for &cid in &diagram.groups[gid.0].children_classes {
-            let c_local = *class_local_pos.get(&cid).unwrap_or(&PointI { x: 0, y: 0 });
-            let c_world = PointI { x: g_world.x + c_local.x, y: g_world.y + c_local.y };
-            class_world_pos.insert(cid, c_world);
+        // Nodes directly in this group
+        for &nid in &diagram.groups[gid.0].children_nodes {
+            let n_local = *node_local_pos.get(&nid).unwrap_or(&PointI { x: 0, y: 0 });
+            let n_world = PointI { x: g_world.x + n_local.x, y: g_world.y + n_local.y };
+            node_world_pos.insert(nid, n_world);
 
-            let sz = cfg.class_size;
-            class_world_bounds.insert(cid, RectI { x: c_world.x, y: c_world.y, w: sz.w, h: sz.h });
+            let sz = cfg.node_size;
+            node_world_bounds.insert(nid, RectI { x: n_world.x, y: n_world.y, w: sz.w, h: sz.h });
         }
     }
 
     LayoutResult {
         group_local_pos,
-        class_local_pos,
+        node_local_pos,
         group_world_pos,
-        class_world_pos,
+        node_world_pos,
         group_world_bounds,
-        class_world_bounds,
+        node_world_bounds,
     }
 }
 
@@ -218,7 +252,7 @@ fn compute_group_local_bounds(
     gid: GroupId,
     cfg: &LayoutConfig,
     group_local_pos: &HashMap<GroupId, PointI>,
-    class_local_pos: &HashMap<ClassId, PointI>,
+    node_local_pos: &HashMap<NodeId, PointI>,
     group_local_bounds: &HashMap<GroupId, RectI>,
 ) -> RectI {
     let g = &diagram.groups[gid.0];
@@ -239,10 +273,10 @@ fn compute_group_local_bounds(
         bb = if any { bb.union(&r) } else { any = true; r };
     }
 
-    // include child classes
-    for &cid in &g.children_classes {
-        let p = *class_local_pos.get(&cid).unwrap_or(&PointI { x: 0, y: 0 });
-        let sz = cfg.class_size;
+    // include child nodes
+    for &nid in &g.children_nodes {
+        let p = *node_local_pos.get(&nid).unwrap_or(&PointI { x: 0, y: 0 });
+        let sz = cfg.node_size;
         let r = RectI { x: p.x, y: p.y, w: sz.w, h: sz.h };
         bb = if any { bb.union(&r) } else { any = true; r };
     }

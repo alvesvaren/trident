@@ -1,14 +1,14 @@
 //! Update positions in the AST for drag operations.
 //!
-//! This module provides functions to update the position of classes and groups
+//! This module provides functions to update the position of nodes and groups
 //! in the AST, which can then be emitted back to source code.
 
 use crate::parser::types::*;
 
-/// Update the position of a class node by ID.
-/// Returns true if the class was found and updated.
-pub fn update_class_position(ast: &mut FileAst, class_id: &str, new_pos: PointI) -> bool {
-    find_and_update_class(&mut ast.items, class_id, new_pos)
+/// Update the position of a node by ID.
+/// Returns true if the node was found and updated.
+pub fn update_node_position(ast: &mut FileAst, node_id: &str, new_pos: PointI) -> bool {
+    find_and_update_node(&mut ast.items, node_id, new_pos)
 }
 
 /// Update the position of a group.
@@ -31,16 +31,16 @@ pub fn update_group_position(
     )
 }
 
-/// Recursively search for a class by ID and update its position
-fn find_and_update_class(items: &mut [Stmt], class_id: &str, new_pos: PointI) -> bool {
+/// Recursively search for a node by ID and update its position
+fn find_and_update_node(items: &mut [Stmt], node_id: &str, new_pos: PointI) -> bool {
     for stmt in items {
         match stmt {
-            Stmt::Class(c) if c.id.0 == class_id => {
-                c.pos = Some(new_pos);
+            Stmt::Node(n) if n.id.0 == node_id => {
+                n.pos = Some(new_pos);
                 return true;
             }
             Stmt::Group(g) => {
-                if find_and_update_class(&mut g.items, class_id, new_pos) {
+                if find_and_update_node(&mut g.items, node_id, new_pos) {
                     return true;
                 }
             }
@@ -87,22 +87,22 @@ fn find_and_update_group(
     false
 }
 
-/// Remove the position of a class node by ID (unlock it).
-/// Returns true if the class was found and its position was removed.
-pub fn remove_class_position(ast: &mut FileAst, class_id: &str) -> bool {
-    find_and_remove_class_position(&mut ast.items, class_id)
+/// Remove the position of a node by ID (unlock it).
+/// Returns true if the node was found and its position was removed.
+pub fn remove_node_position(ast: &mut FileAst, node_id: &str) -> bool {
+    find_and_remove_node_position(&mut ast.items, node_id)
 }
 
-/// Recursively search for a class by ID and remove its position
-fn find_and_remove_class_position(items: &mut [Stmt], class_id: &str) -> bool {
+/// Recursively search for a node by ID and remove its position
+fn find_and_remove_node_position(items: &mut [Stmt], node_id: &str) -> bool {
     for stmt in items {
         match stmt {
-            Stmt::Class(c) if c.id.0 == class_id => {
-                c.pos = None;
+            Stmt::Node(n) if n.id.0 == node_id => {
+                n.pos = None;
                 return true;
             }
             Stmt::Group(g) => {
-                if find_and_remove_class_position(&mut g.items, class_id) {
+                if find_and_remove_node_position(&mut g.items, node_id) {
                     return true;
                 }
             }
@@ -112,7 +112,7 @@ fn find_and_remove_class_position(items: &mut [Stmt], class_id: &str) -> bool {
     false
 }
 
-/// Remove all positions from all classes and groups in the AST.
+/// Remove all positions from all nodes and groups in the AST.
 /// This "unlocks" everything for auto-layout.
 pub fn remove_all_positions(ast: &mut FileAst) {
     remove_all_positions_recursive(&mut ast.items);
@@ -122,8 +122,8 @@ pub fn remove_all_positions(ast: &mut FileAst) {
 fn remove_all_positions_recursive(items: &mut [Stmt]) {
     for stmt in items {
         match stmt {
-            Stmt::Class(c) => {
-                c.pos = None;
+            Stmt::Node(n) => {
+                n.pos = None;
             }
             Stmt::Group(g) => {
                 g.pos = None;
@@ -140,11 +140,11 @@ mod tests {
     use crate::parser::{parse_file, emit_file};
 
     #[test]
-    fn test_update_class_position() {
+    fn test_update_node_position() {
         let input = "class Foo\n";
         let mut ast = parse_file(input).unwrap();
         
-        let updated = update_class_position(&mut ast, "Foo", PointI { x: 100, y: 200 });
+        let updated = update_node_position(&mut ast, "Foo", PointI { x: 100, y: 200 });
         assert!(updated);
         
         let output = emit_file(&ast);
@@ -152,11 +152,11 @@ mod tests {
     }
 
     #[test]
-    fn test_update_class_position_existing() {
+    fn test_update_node_position_existing() {
         let input = "class Foo {\n    @pos: (10, 20)\n}\n";
         let mut ast = parse_file(input).unwrap();
         
-        let updated = update_class_position(&mut ast, "Foo", PointI { x: 100, y: 200 });
+        let updated = update_node_position(&mut ast, "Foo", PointI { x: 100, y: 200 });
         assert!(updated);
         
         let output = emit_file(&ast);
@@ -165,11 +165,11 @@ mod tests {
     }
 
     #[test]
-    fn test_update_class_in_group() {
+    fn test_update_node_in_group() {
         let input = "group MyGroup {\n    class Foo\n}\n";
         let mut ast = parse_file(input).unwrap();
         
-        let updated = update_class_position(&mut ast, "Foo", PointI { x: 50, y: 60 });
+        let updated = update_node_position(&mut ast, "Foo", PointI { x: 50, y: 60 });
         assert!(updated);
         
         let output = emit_file(&ast);
@@ -201,11 +201,24 @@ mod tests {
     }
 
     #[test]
-    fn test_update_nonexistent_class() {
+    fn test_update_nonexistent_node() {
         let input = "class Foo\n";
         let mut ast = parse_file(input).unwrap();
         
-        let updated = update_class_position(&mut ast, "Bar", PointI { x: 100, y: 200 });
+        let updated = update_node_position(&mut ast, "Bar", PointI { x: 100, y: 200 });
         assert!(!updated);
+    }
+
+    #[test]
+    fn test_update_interface_position() {
+        let input = "interface IFoo\n";
+        let mut ast = parse_file(input).unwrap();
+        
+        let updated = update_node_position(&mut ast, "IFoo", PointI { x: 100, y: 200 });
+        assert!(updated);
+        
+        let output = emit_file(&ast);
+        assert!(output.contains("interface IFoo"));
+        assert!(output.contains("@pos: (100, 200)"));
     }
 }
