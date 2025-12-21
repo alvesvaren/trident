@@ -9,6 +9,10 @@ export interface CodeEditorRef {
     silentSetValue: (value: string) => void;
     /** Push an undo stop (call after drag ends to mark the undo point) */
     pushUndoStop: () => void;
+    /** Trigger undo */
+    undo: () => void;
+    /** Trigger redo */
+    redo: () => void;
 }
 
 interface CodeEditorProps {
@@ -55,6 +59,18 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                 const editor = editorRef.current;
                 if (editor) {
                     editor.pushUndoStop();
+                }
+            },
+            undo: () => {
+                const editor = editorRef.current;
+                if (editor) {
+                    editor.trigger("keyboard", "undo", null);
+                }
+            },
+            redo: () => {
+                const editor = editorRef.current;
+                if (editor) {
+                    editor.trigger("keyboard", "redo", null);
                 }
             },
         }), []);

@@ -1,6 +1,6 @@
-import { useCallback, useRef, useMemo } from "react";
+import { useCallback, useRef, useMemo, useState, useEffect } from "react";
 import { TransformWrapper, TransformComponent, useControls } from "react-zoom-pan-pinch";
-import { ZoomIn, ZoomOut, RotateCcw, Download, Image } from "lucide-react";
+import { ZoomIn, ZoomOut, RotateCcw, Download, Image, Home, Focus, Maximize2, Minimize2 } from "lucide-react";
 import * as trident_core from "trident-core";
 import type { DiagramOutput } from "../../types/diagram";
 import { useDiagramDrag } from "../../hooks/useDiagramDrag";
@@ -17,11 +17,79 @@ interface DiagramCanvasProps {
     editorRef?: React.RefObject<CodeEditorRef | null>;
 }
 
-function ZoomControls({ onExportSVG, onExportPNG }: { onExportSVG: () => void; onExportPNG: () => void }) {
-    const { zoomIn, zoomOut, resetTransform } = useControls();
+interface ZoomControlsProps {
+    onExportSVG: () => void;
+    onExportPNG: () => void;
+    containerRef: React.RefObject<HTMLDivElement | null>;
+    svgViewport: { x: number; y: number; width: number; height: number };
+}
+
+function ZoomControls({ onExportSVG, onExportPNG, containerRef, svgViewport }: ZoomControlsProps) {
+    const { zoomIn, zoomOut, resetTransform, centerView, setTransform } = useControls();
+    const [isFullscreen, setIsFullscreen] = useState(false);
+
+    // Listen for fullscreen changes
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            setIsFullscreen(document.fullscreenElement === containerRef.current);
+        };
+        document.addEventListener("fullscreenchange", handleFullscreenChange);
+        return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    }, [containerRef]);
+
+    // Fit entire diagram to viewport
+    const handleFitToScreen = useCallback(() => {
+        if (!containerRef.current) return;
+        const container = containerRef.current;
+        const containerWidth = container.clientWidth;
+        const containerHeight = container.clientHeight;
+
+        // Calculate scale to fit the entire diagram with some padding
+        const padding = 40;
+        const scaleX = (containerWidth - padding * 2) / svgViewport.width;
+        const scaleY = (containerHeight - padding * 2) / svgViewport.height;
+        const scale = Math.min(scaleX, scaleY, 1); // Don't zoom in past 100%
+
+        // Center the diagram
+        const centerX = (containerWidth - svgViewport.width * scale) / 2 - svgViewport.x * scale;
+        const centerY = (containerHeight - svgViewport.height * scale) / 2 - svgViewport.y * scale;
+
+        setTransform(centerX, centerY, scale, 300);
+    }, [containerRef, svgViewport, setTransform]);
+
+    // Reset to 100% scale
+    const handleResetScale = useCallback(() => {
+        centerView(1, 300);
+    }, [centerView]);
+
+    // Toggle fullscreen
+    const handleFullscreen = useCallback(() => {
+        if (!containerRef.current) return;
+
+        if (document.fullscreenElement) {
+            document.exitFullscreen();
+        } else {
+            containerRef.current.requestFullscreen();
+        }
+    }, [containerRef]);
 
     return (
         <div className="absolute top-3 right-3 z-20 flex gap-1">
+            <button
+                onClick={handleFitToScreen}
+                className="p-2 bg-neutral-800 border border-neutral-700 rounded text-neutral-300 hover:bg-neutral-700 transition-colors"
+                title="Fit to Screen"
+            >
+                <Home size={16} />
+            </button>
+            <button
+                onClick={handleResetScale}
+                className="p-2 bg-neutral-800 border border-neutral-700 rounded text-neutral-300 hover:bg-neutral-700 transition-colors"
+                title="Reset to 100%"
+            >
+                <Focus size={16} />
+            </button>
+            <div className="w-px bg-neutral-700 mx-1" />
             <button
                 onClick={() => zoomIn()}
                 className="p-2 bg-neutral-800 border border-neutral-700 rounded text-neutral-300 hover:bg-neutral-700 transition-colors"
@@ -58,12 +126,21 @@ function ZoomControls({ onExportSVG, onExportPNG }: { onExportSVG: () => void; o
             >
                 <Image size={16} />
             </button>
+            <div className="w-px bg-neutral-700 mx-1" />
+            <button
+                onClick={handleFullscreen}
+                className="p-2 bg-neutral-800 border border-neutral-700 rounded text-neutral-300 hover:bg-neutral-700 transition-colors"
+                title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+            >
+                {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </button>
         </div>
     );
 }
 
 export function DiagramCanvas({ result, code, onCodeChange, editorRef }: DiagramCanvasProps) {
     const svgRef = useRef<SVGSVGElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
     const { dragState, dragResult, scaleRef, startNodeDrag, startGroupDrag } =
         useDiagramDrag({ code, onCodeChange, editorRef });
 
@@ -107,6 +184,28 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
             height: maxY - minY + padding * 2,
         };
     }, [displayResult.nodes, displayResult.groups]);
+
+    // Global keyboard shortcuts for undo/redo (works in fullscreen mode)
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Only handle when canvas container is in fullscreen
+            if (document.fullscreenElement !== containerRef.current) return;
+
+            const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+            const ctrlOrCmd = isMac ? e.metaKey : e.ctrlKey;
+
+            if (ctrlOrCmd && e.key === "z" && !e.shiftKey) {
+                e.preventDefault();
+                editorRef?.current?.undo();
+            } else if (ctrlOrCmd && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
+                e.preventDefault();
+                editorRef?.current?.redo();
+            }
+        };
+
+        document.addEventListener("keydown", handleKeyDown);
+        return () => document.removeEventListener("keydown", handleKeyDown);
+    }, [editorRef]);
 
     const handleUnlock = useCallback(
         (nodeId: string, e: React.MouseEvent) => {
@@ -200,7 +299,7 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
     }, [svgViewport]);
 
     return (
-        <div className="relative h-full bg-neutral-900 overflow-hidden">
+        <div ref={containerRef} className="relative h-full bg-neutral-900 overflow-hidden">
             <TransformWrapper
                 initialScale={1}
                 minScale={0.25}
@@ -212,7 +311,7 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
                     scaleRef.current = state.scale;
                 }}
             >
-                <ZoomControls onExportSVG={exportSVG} onExportPNG={exportPNG} />
+                <ZoomControls onExportSVG={exportSVG} onExportPNG={exportPNG} containerRef={containerRef} svgViewport={svgViewport} />
                 <TransformComponent
                     wrapperStyle={{ width: "100%", height: "100%" }}
                     contentStyle={{ width: "100%", height: "100%" }}
