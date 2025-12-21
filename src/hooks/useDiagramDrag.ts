@@ -38,6 +38,16 @@ export function useDiagramDrag({
     const lastUpdateRef = useRef<{ x: number; y: number } | null>(null);
     // Track if we've made any updates during this drag (to know if we need undo stop)
     const hasUpdatedRef = useRef(false);
+    // Track pending code that we're waiting to be applied (to prevent flicker on release)
+    const pendingCodeRef = useRef<string | null>(null);
+
+    // Clear dragResult once the parent code has been updated to match our pending code
+    useEffect(() => {
+        if (pendingCodeRef.current && code === pendingCodeRef.current) {
+            pendingCodeRef.current = null;
+            setDragResult(null);
+        }
+    }, [code]);
 
     const startNodeDrag = useCallback((e: React.MouseEvent, node: DiagramNode) => {
         e.preventDefault();
@@ -131,8 +141,12 @@ export function useDiagramDrag({
 
                 if (isFinal) {
                     // On release: update React state (this will sync editor properly)
+                    // Keep dragResult showing the final position until parent code updates
+                    // (prevents flicker for one frame)
+                    const jsonResult = trident_core.compile_diagram(newCode);
+                    setDragResult(JSON.parse(jsonResult));
+                    pendingCodeRef.current = newCode;
                     onCodeChange(newCode);
-                    setDragResult(null);
                 } else if (editorRef?.current) {
                     // During drag: update Monaco silently and compile layout locally
                     editorRef.current.silentSetValue(newCode);
