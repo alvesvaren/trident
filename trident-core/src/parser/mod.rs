@@ -3,6 +3,7 @@ mod compile;
 mod codegen;
 mod update;
 mod types;
+mod rename;
 
 pub use ast::parse_file;
 pub use compile::compile;
@@ -15,3 +16,4 @@ pub use update::{
 };
 pub use types::*;
 pub use compile::{Diagram, GroupId, NodeId, Group, Node, Edge};
+pub use rename::{rename_symbol_in_ast, collect_symbols};

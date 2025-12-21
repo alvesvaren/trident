@@ -187,3 +187,40 @@ pub fn remove_all_pos(source: &str) -> String {
     parser::remove_all_positions(&mut ast);
     parser::emit_file(&ast)
 }
+
+/// Rename a symbol (node ID or group ID) and return the updated source code.
+/// Returns the original source if the symbol is not found or parsing fails.
+#[wasm_bindgen]
+pub fn rename_symbol(source: &str, old_name: &str, new_name: &str) -> String {
+    let mut ast = match parser::parse_file(source) {
+        Ok(ast) => ast,
+        Err(e) => {
+            console_error(&format!("Error parsing file: {:?}", e));
+            return source.to_string();
+        }
+    };
+    
+    if parser::rename_symbol_in_ast(&mut ast, old_name, new_name) {
+        parser::emit_file(&ast)
+    } else {
+        console_error(&format!("Symbol '{}' not found", old_name));
+        source.to_string()
+    }
+}
+
+/// Get all defined symbols (node IDs and group IDs) in the source.
+/// Returns a JSON array of strings.
+#[wasm_bindgen]
+pub fn get_symbols(source: &str) -> String {
+    let ast = match parser::parse_file(source) {
+        Ok(ast) => ast,
+        Err(_) => {
+            // Return empty array on parse error
+            return "[]".to_string();
+        }
+    };
+    
+    let symbols = parser::collect_symbols(&ast);
+    serde_json::to_string(&symbols).unwrap_or_else(|_| "[]".to_string())
+}
+

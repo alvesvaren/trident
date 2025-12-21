@@ -12,8 +12,106 @@
 // Usage with @monaco-editor/react is shown below.
 
 import type * as monaco from "monaco-editor";
+import * as trident_core from "trident-core";
 
 export const TRIDENT_ID = "trident";
+
+// Keywords for completion
+const KEYWORDS = [
+  "class",
+  "interface",
+  "enum",
+  "struct",
+  "record",
+  "trait",
+  "object",
+  "group",
+  "abstract",
+  "static",
+  "sealed",
+  "final",
+  "public",
+  "private",
+  "protected",
+];
+
+// Arrow tokens for completion
+const ARROWS = [
+  { token: "-->", label: "--> (association)", detail: "Association arrow" },
+  { token: "<--", label: "<-- (association left)", detail: "Left association" },
+  { token: "<|--", label: "<|-- (extends)", detail: "Inheritance/extends" },
+  { token: "--|>", label: "--|> (extends right)", detail: "Inheritance/extends" },
+  { token: "..>", label: "..> (dependency)", detail: "Dependency arrow" },
+  { token: "<..", label: "<.. (dependency left)", detail: "Left dependency" },
+  { token: "---", label: "--- (line)", detail: "Simple line" },
+  { token: "o--", label: "o-- (aggregation)", detail: "Aggregation" },
+  { token: "*--", label: "*-- (composition)", detail: "Composition" },
+  { token: "..", label: ".. (dotted)", detail: "Dotted line" },
+];
+
+// Snippets for completion
+const SNIPPETS = [
+  {
+    label: "class",
+    insertText: "class ${1:ClassName} {\n\t$0\n}",
+    detail: "Class with body",
+    documentation: "Create a class with a body block",
+  },
+  {
+    label: "class-simple",
+    insertText: "class ${1:ClassName}",
+    detail: "Simple class",
+    documentation: "Create a simple class without body",
+  },
+  {
+    label: "interface",
+    insertText: "interface ${1:InterfaceName} {\n\t$0\n}",
+    detail: "Interface with body",
+    documentation: "Create an interface with a body block",
+  },
+  {
+    label: "group",
+    insertText: "group ${1:GroupName} {\n\t$0\n}",
+    detail: "Named group",
+    documentation: "Create a named group of elements",
+  },
+  {
+    label: "group-anon",
+    insertText: "group {\n\t$0\n}",
+    detail: "Anonymous group",
+    documentation: "Create an anonymous group",
+  },
+  {
+    label: "abstract-class",
+    insertText: "abstract class ${1:ClassName} {\n\t$0\n}",
+    detail: "Abstract class",
+    documentation: "Create an abstract class",
+  },
+  {
+    label: "enum",
+    insertText: "enum ${1:EnumName} {\n\t$0\n}",
+    detail: "Enum with body",
+    documentation: "Create an enum with values",
+  },
+  {
+    label: "relation",
+    insertText: "${1:From} --> ${2:To}",
+    detail: "Simple relation",
+    documentation: "Create a relation between two elements",
+  },
+  {
+    label: "relation-labeled",
+    insertText: "${1:From} --> ${2:To} : ${3:label}",
+    detail: "Labeled relation",
+    documentation: "Create a labeled relation",
+  },
+  {
+    label: "extends",
+    insertText: "${1:Child} <|-- ${2:Parent}",
+    detail: "Inheritance relation",
+    documentation: "Create an inheritance/extends relation",
+  },
+];
 
 export function registerSddLanguage(monacoApi: typeof monaco) {
   // 1) Register language
@@ -129,6 +227,187 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
     },
   });
 
+  // 4) Completion provider (keywords, snippets, relations)
+  monacoApi.languages.registerCompletionItemProvider(TRIDENT_ID, {
+    triggerCharacters: ["-", ".", "<", ">", " "],
+    provideCompletionItems: (model, position) => {
+      const word = model.getWordUntilPosition(position);
+      const range: monaco.IRange = {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: word.startColumn,
+        endColumn: word.endColumn,
+      };
+
+      // Get line content up to cursor
+      const lineContent = model.getLineContent(position.lineNumber);
+      const textBeforeCursor = lineContent.substring(0, position.column - 1);
+
+      const suggestions: monaco.languages.CompletionItem[] = [];
+
+      // Check if we're after an arrow (suggest defined symbols)
+      const arrowMatch = textBeforeCursor.match(/(-->|<--|<\|--|--\|>|\.\.>|<\.\.|---|o--|\*--|\.\.)[\s]*$/);
+      if (arrowMatch) {
+        // Get symbols from current document
+        const source = model.getValue();
+        try {
+          const symbolsJson = trident_core.get_symbols(source);
+          const symbols: string[] = JSON.parse(symbolsJson);
+          for (const sym of symbols) {
+            suggestions.push({
+              label: sym,
+              kind: monacoApi.languages.CompletionItemKind.Reference,
+              insertText: sym,
+              range,
+              detail: "Defined symbol",
+              sortText: "0" + sym, // Sort symbols first
+            });
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+
+      // Check if we're typing an arrow (after identifier and space)
+      const arrowTypingMatch = textBeforeCursor.match(/[A-Za-z_][A-Za-z0-9_]*[\s]+([-.<>|*o]*)$/);
+      if (arrowTypingMatch) {
+        const partialArrow = arrowTypingMatch[1];
+        for (const arrow of ARROWS) {
+          if (arrow.token.startsWith(partialArrow) || partialArrow === "") {
+            suggestions.push({
+              label: arrow.label,
+              kind: monacoApi.languages.CompletionItemKind.Operator,
+              insertText: arrow.token + " ",
+              range: {
+                ...range,
+                startColumn: position.column - partialArrow.length,
+              },
+              detail: arrow.detail,
+              sortText: "1" + arrow.token,
+            });
+          }
+        }
+      }
+
+      // Add keyword completions
+      for (const kw of KEYWORDS) {
+        if (kw.startsWith(word.word.toLowerCase()) || word.word === "") {
+          suggestions.push({
+            label: kw,
+            kind: monacoApi.languages.CompletionItemKind.Keyword,
+            insertText: kw,
+            range,
+            sortText: "2" + kw,
+          });
+        }
+      }
+
+      // Add snippet completions
+      for (const snippet of SNIPPETS) {
+        if (snippet.label.startsWith(word.word.toLowerCase()) || word.word === "") {
+          suggestions.push({
+            label: snippet.label,
+            kind: monacoApi.languages.CompletionItemKind.Snippet,
+            insertText: snippet.insertText,
+            insertTextRules: monacoApi.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            range,
+            detail: snippet.detail,
+            documentation: snippet.documentation,
+            sortText: "3" + snippet.label,
+          });
+        }
+      }
+
+      return { suggestions };
+    },
+  });
+
+  // 5) Rename provider (F2)
+  monacoApi.languages.registerRenameProvider(TRIDENT_ID, {
+    provideRenameEdits: (model, position, newName) => {
+      const word = model.getWordAtPosition(position);
+      if (!word) {
+        return { edits: [] };
+      }
+
+      const oldName = word.word;
+      const source = model.getValue();
+
+      try {
+        const newSource = trident_core.rename_symbol(source, oldName, newName);
+
+        // If source unchanged, symbol wasn't found
+        if (newSource === source) {
+          return { edits: [] };
+        }
+
+        // Return a single edit that replaces the entire content
+        return {
+          edits: [
+            {
+              resource: model.uri,
+              textEdit: {
+                range: model.getFullModelRange(),
+                text: newSource,
+              },
+              versionId: model.getVersionId(),
+            },
+          ],
+        };
+      } catch {
+        return { edits: [] };
+      }
+    },
+
+    resolveRenameLocation: (model, position) => {
+      const word = model.getWordAtPosition(position);
+      if (!word) {
+        return {
+          range: {
+            startLineNumber: position.lineNumber,
+            startColumn: position.column,
+            endLineNumber: position.lineNumber,
+            endColumn: position.column,
+          },
+          text: "",
+          rejectReason: "Cannot rename this element",
+        };
+      }
+
+      // Check if this word is a valid symbol
+      const source = model.getValue();
+      try {
+        const symbolsJson = trident_core.get_symbols(source);
+        const symbols: string[] = JSON.parse(symbolsJson);
+
+        if (!symbols.includes(word.word)) {
+          return {
+            range: {
+              startLineNumber: position.lineNumber,
+              startColumn: word.startColumn,
+              endLineNumber: position.lineNumber,
+              endColumn: word.endColumn,
+            },
+            text: word.word,
+            rejectReason: `'${word.word}' is not a defined symbol`,
+          };
+        }
+      } catch {
+        // Allow rename attempt even on parse error
+      }
+
+      return {
+        range: {
+          startLineNumber: position.lineNumber,
+          startColumn: word.startColumn,
+          endLineNumber: position.lineNumber,
+          endColumn: word.endColumn,
+        },
+        text: word.word,
+      };
+    },
+  });
+
   monacoApi.editor.defineTheme("trident-dark", {
     base: "vs-dark",
     inherit: true,
@@ -154,3 +433,4 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
     },
   });
 }
+
