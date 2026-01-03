@@ -32,7 +32,7 @@ function App() {
       left={
         <>
           <div style={{ flex: 1, overflow: "hidden" }}>
-            <CodeEditor ref={editorRef} value={code} onChange={setCode} error={result.error} />
+            <CodeEditor ref={editorRef} value={code} onChange={setCode} error={result.error} implicitNodes={result.implicit_nodes} />
           </div>
           <Toolbar code={code} onCodeChange={setCode} />
         </>
@@ -43,4 +43,3 @@ function App() {
 }
 
 export default App;
-

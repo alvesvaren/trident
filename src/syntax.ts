@@ -177,6 +177,10 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
         // layout directive (@layout: grid, @layout: hierarchical)
         [/[@]layout:/, "annotation"],
 
+        // size directives (@width: and @height:)
+        [/[@]width:/, "annotation"],
+        [/[@]height:/, "annotation"],
+
         // braces / parens
         [/[{}]/, "@brackets"],
         [/[()]/, "@brackets"],

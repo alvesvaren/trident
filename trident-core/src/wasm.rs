@@ -241,17 +241,61 @@ pub fn rename_symbol(source: &str, old_name: &str, new_name: &str) -> String {
 
 /// Get all defined symbols (node IDs and group IDs) in the source.
 /// Returns a JSON array of strings.
+/// NOTE: This tries to parse the source and extract symbols even if there are errors.
 #[wasm_bindgen]
 pub fn get_symbols(source: &str) -> String {
-    let ast = match parser::parse_file(source) {
-        Ok(ast) => ast,
-        Err(_) => {
-            // Return empty array on parse error
-            return "[]".to_string();
+    // Try parsing - if it fails, try a line-by-line fallback
+    match parser::parse_file(source) {
+        Ok(ast) => {
+            let symbols = parser::collect_symbols(&ast);
+            serde_json::to_string(&symbols).unwrap_or_else(|_| "[]".to_string())
         }
-    };
-    
-    let symbols = parser::collect_symbols(&ast);
-    serde_json::to_string(&symbols).unwrap_or_else(|_| "[]".to_string())
+        Err(_) => {
+            // Fallback: extract identifiers from node/class declarations using regex-like matching
+            // This is a simple heuristic to get symbols even when parse fails
+            let mut symbols: Vec<String> = Vec::new();
+            for line in source.lines() {
+                let trimmed = line.trim();
+                // Skip comments and empty lines
+                if trimmed.is_empty() || trimmed.starts_with("%%") {
+                    continue;
+                }
+                // Look for node declarations: [modifiers] <kind> <identifier>
+                let words: Vec<&str> = trimmed.split_whitespace().collect();
+                if words.len() >= 2 {
+                    // Check if any word is a node kind keyword
+                    let kinds = ["class", "interface", "enum", "struct", "record", "trait", 
+                                 "object", "node", "rectangle", "circle", "diamond"];
+                    for (i, word) in words.iter().enumerate() {
+                        if kinds.contains(word) && i + 1 < words.len() {
+                            // Next word is the identifier (strip any trailing characters)
+                            let id = words[i + 1]
+                                .chars()
+                                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                                .collect::<String>();
+                            if !id.is_empty() && !symbols.contains(&id) {
+                                symbols.push(id);
+                            }
+                            break;
+                        }
+                    }
+                    // Check for group: group <identifier> { or group {
+                    if words[0] == "group" && words.len() >= 2 {
+                        let potential_id = words[1];
+                        if potential_id != "{" {
+                            let id = potential_id
+                                .chars()
+                                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                                .collect::<String>();
+                            if !id.is_empty() && !symbols.contains(&id) {
+                                symbols.push(id);
+                            }
+                        }
+                    }
+                }
+            }
+            serde_json::to_string(&symbols).unwrap_or_else(|_| "[]".to_string())
+        }
+    }
 }
 

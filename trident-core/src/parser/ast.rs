@@ -764,7 +764,8 @@ mod tests {
         assert_eq!(ast.items.len(), 1);
         match &ast.items[0] {
             Stmt::Node(n) => {
-                assert_eq!(n.kind, "interface");
+                assert_eq!(n.kind, "class"); // Maps to class kind
+                assert_eq!(n.original_kind, "interface"); // Preserves original keyword
                 assert_eq!(n.id.0, "Baz");
             }
             _ => panic!("Expected Node"),
@@ -778,9 +779,10 @@ mod tests {
         assert_eq!(ast.items.len(), 1);
         match &ast.items[0] {
             Stmt::Node(n) => {
-                assert_eq!(n.kind, "enum");
+                assert_eq!(n.kind, "class"); // Maps to class kind
+                assert_eq!(n.original_kind, "enum"); // Preserves original keyword
                 assert_eq!(n.id.0, "Status");
-                assert_eq!(n.modifiers, vec!["public", "sealed"]);
+                assert_eq!(n.modifiers, vec!["public", "sealed"]); // Modifiers before keyword
             }
             _ => panic!("Expected Node"),
         }
