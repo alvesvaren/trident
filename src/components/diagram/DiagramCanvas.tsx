@@ -5,6 +5,7 @@ import * as trident_core from "trident-core";
 import type { DiagramOutput } from "../../types/diagram";
 import { useDiagramDrag } from "../../hooks/useDiagramDrag";
 import { SVGNode } from "./SVGNode";
+import { SVGShapeNode } from "./SVGShapeNode";
 import { SVGGroup } from "./SVGGroup";
 import { EdgeDefs, SVGEdges } from "./SVGEdges";
 import type { CodeEditorRef } from "../editor/CodeEditor";
@@ -460,8 +461,11 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
               const x = isDragging ? dragState!.currentX : node.bounds.x;
               const y = isDragging ? dragState!.currentY : node.bounds.y;
 
+              // Dispatch to SVGNode (class kind) or SVGShapeNode (node kind)
+              const NodeComponent = node.kind === "node" ? SVGShapeNode : SVGNode;
+
               return (
-                <SVGNode
+                <NodeComponent
                   key={node.id}
                   node={node}
                   x={x}

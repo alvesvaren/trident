@@ -87,7 +87,7 @@ fn emit_group(g: &GroupAst, indent: usize, out: &mut String) {
 fn emit_node(n: &NodeAst, indent: usize, out: &mut String) {
     let ind = indent_str(indent);
     
-    // Build header: [modifiers] <kind> <id> ["label"]
+    // Build header: [modifiers] <original_kind> <id> ["label"]
     let mut header = String::new();
     header.push_str(&ind);
     
@@ -97,8 +97,8 @@ fn emit_node(n: &NodeAst, indent: usize, out: &mut String) {
         header.push(' ');
     }
     
-    // Emit kind and id
-    header.push_str(&n.kind);
+    // Emit original_kind (preserves user's syntax: enum, diamond, etc.)
+    header.push_str(&n.original_kind);
     header.push(' ');
     header.push_str(&n.id.0);
     

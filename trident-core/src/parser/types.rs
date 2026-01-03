@@ -54,9 +54,12 @@ pub struct GroupAst {
 /// A node declaration (class, interface, enum, etc.)
 #[derive(Debug, Clone, Serialize)]
 pub struct NodeAst {
-    /// Node kind: "class", "interface", "enum", "struct", etc.
+    /// Node kind: "class", "node"
     pub kind: String,
-    /// Modifiers: "abstract", "static", "sealed", etc.
+    /// Original kind keyword as written by user (e.g., "enum", "diamond")
+    /// Used for code regeneration to preserve user's syntax
+    pub original_kind: String,
+    /// Modifiers: "abstract", "interface", "enum", "rectangle", "circle", "diamond", etc.
     pub modifiers: Vec<String>,
     /// Unique identifier
     pub id: Ident,
@@ -64,6 +67,10 @@ pub struct NodeAst {
     pub label: Option<String>,
     /// local position relative to closest parent group (or root)
     pub pos: Option<PointI>,
+    /// Custom width (from @width directive)
+    pub width: Option<i32>,
+    /// Custom height (from @height directive)
+    pub height: Option<i32>,
     /// opaque lines inside node block (renderer decides)
     pub body_lines: Vec<String>,
     /// Source span for round-tripping
@@ -120,18 +127,26 @@ pub fn token_from_arrow(arrow: &str) -> Option<&'static str> {
 // Known node kinds - for parsing
 // ============================================================================
 
-/// Known node kinds that the parser recognizes
-pub const KNOWN_NODE_KINDS: &[&str] = &[
-    "class",
-    "interface",
-    "enum",
-    "struct",
-    "record",
-    "trait",
-    "object",
-];
+/// The two primary node kinds
+pub const KNOWN_NODE_KINDS: &[&str] = &["class", "node"];
+
+/// Keywords that create class kind + add themselves as modifier
+pub const CLASS_KEYWORDS: &[&str] = &["interface", "enum", "struct", "record", "trait", "object"];
+
+/// Keywords that create node kind + add themselves as modifier (shapes)
+pub const NODE_KEYWORDS: &[&str] = &["rectangle", "circle", "diamond"];
 
 /// Check if a string is a known node kind
 pub fn is_node_kind(s: &str) -> bool {
     KNOWN_NODE_KINDS.contains(&s)
+}
+
+/// Check if a string is a class-mapped keyword (returns the keyword as modifier)
+pub fn class_keyword(s: &str) -> Option<&'static str> {
+    CLASS_KEYWORDS.iter().find(|&&kw| kw == s).copied()
+}
+
+/// Check if a string is a node-mapped keyword (returns the shape as modifier)
+pub fn node_keyword(s: &str) -> Option<&'static str> {
+    NODE_KEYWORDS.iter().find(|&&kw| kw == s).copied()
 }

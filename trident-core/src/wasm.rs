@@ -30,6 +30,7 @@ pub fn compile_diagram(input: &str) -> String {
                 groups: vec![],
                 nodes: vec![],
                 edges: vec![],
+                implicit_nodes: vec![],
                 error: Some(ErrorInfo {
                     message: e.msg.clone(),
                     line: e.line,
@@ -49,6 +50,7 @@ pub fn compile_diagram(input: &str) -> String {
                 groups: vec![],
                 nodes: vec![],
                 edges: vec![],
+                implicit_nodes: vec![],
                 error: Some(ErrorInfo {
                     message: e.msg.clone(),
                     line: e.line,
@@ -91,6 +93,7 @@ pub fn compile_diagram(input: &str) -> String {
             bounds,
             has_pos: n.pos.is_some(),
             parent_offset: parent_world,
+            explicit: n.explicit,
         }
     }).collect();
     
@@ -106,7 +109,13 @@ pub fn compile_diagram(input: &str) -> String {
         }
     }).collect();
     
-    let output = DiagramOutput { groups, nodes, edges, error: None };
+    // Collect implicit node IDs for editor diagnostics
+    let implicit_nodes: Vec<String> = diagram.nodes.iter()
+        .filter(|n| !n.explicit)
+        .map(|n| n.id.0.clone())
+        .collect();
+    
+    let output = DiagramOutput { groups, nodes, edges, implicit_nodes, error: None };
     to_string(&output).unwrap()
 }
 
@@ -186,6 +195,28 @@ pub fn remove_all_pos(source: &str) -> String {
     
     parser::remove_all_positions(&mut ast);
     parser::emit_file(&ast)
+}
+
+/// Insert a node declaration for an implicit node (created from a relation).
+/// This is used when starting to drag an implicit node to make it explicit.
+/// Returns the updated source code.
+#[wasm_bindgen]
+pub fn insert_implicit_node(source: &str, node_id: &str, x: i32, y: i32) -> String {
+    let mut ast = match parser::parse_file(source) {
+        Ok(ast) => ast,
+        Err(e) => {
+            console_error(&format!("Error parsing file: {:?}", e));
+            return source.to_string();
+        }
+    };
+    
+    let pos = PointI { x, y };
+    if parser::insert_implicit_node(&mut ast, node_id, pos) {
+        parser::emit_file(&ast)
+    } else {
+        // Node already exists, nothing to do
+        source.to_string()
+    }
 }
 
 /// Rename a symbol (node ID or group ID) and return the updated source code.

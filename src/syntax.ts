@@ -25,6 +25,10 @@ const KEYWORDS = [
   "record",
   "trait",
   "object",
+  "node",
+  "rectangle",
+  "circle",
+  "diamond",
   "group",
   "abstract",
   "static",
@@ -151,7 +155,7 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
     tokenPostfix: ".sdd",
 
     // Node kind keywords
-    nodeKinds: ["class", "interface", "enum", "struct", "record", "trait", "object"],
+    nodeKinds: ["class", "interface", "enum", "struct", "record", "trait", "object", "node", "rectangle", "circle", "diamond"],
 
     // Modifier keywords
     modifiers: ["abstract", "static", "sealed", "final", "public", "private", "protected"],
@@ -160,18 +164,7 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
     keywords: ["classDiagram", "group"],
 
     // Arrow tokens (longest first)
-    arrows: [
-      "<|--",
-      "--|>",
-      "..>",
-      "<..",
-      "---",
-      "-->",
-      "<--",
-      "o--",
-      "*--",
-      "..",
-    ],
+    arrows: ["<|--", "--|>", "..>", "<..", "---", "-->", "<--", "o--", "*--", ".."],
 
     tokenizer: {
       root: [
@@ -202,7 +195,7 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
         [/:/, "delimiter"],
 
         // Node kinds (highlighted specially)
-        [/\b(class|interface|enum|struct|record|trait|object)\b/, "keyword.type"],
+        [/\b(class|interface|enum|struct|record|trait|object|node|rectangle|circle|diamond)\b/, "keyword.type"],
 
         // Modifiers (highlighted specially)
         [/\b(abstract|static|sealed|final|public|private|protected)\b/, "keyword.modifier"],
@@ -269,8 +262,6 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
       } catch {
         // Ignore parse errors
       }
-
-
 
       // Check if we're typing an arrow (after identifier and space)
       const arrowTypingMatch = textBeforeCursor.match(/[A-Za-z_][A-Za-z0-9_]*[\s]+([-.<>|*o]*)$/);
@@ -418,8 +409,8 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
     rules: [
       // Keywords
       { token: "keyword", foreground: "C586C0" },
-      { token: "keyword.type", foreground: "C586C0" },  // Node kinds in teal
-      { token: "keyword.modifier", foreground: "C586C0" },  // Modifiers in blue
+      { token: "keyword.type", foreground: "C586C0" }, // Node kinds in teal
+      { token: "keyword.modifier", foreground: "C586C0" }, // Modifiers in blue
 
       // Annotations/directives
       { token: "annotation", foreground: "C586C0" },
@@ -462,4 +453,3 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
     },
   });
 }
-

@@ -95,7 +95,8 @@ pub fn layout_grid(diagram: &Diagram, cfg: &LayoutConfig) -> LayoutResult {
             let n_world = PointI { x: g_world.x + n_local.x, y: g_world.y + n_local.y };
             node_world_pos.insert(nid, n_world);
 
-            let sz = cfg.node_size;
+            let node = &diagram.nodes[nid.0];
+            let sz = crate::layout::get_node_size(node, cfg);
             node_world_bounds.insert(nid, RectI { x: n_world.x, y: n_world.y, w: sz.w, h: sz.h });
         }
     }

@@ -134,6 +134,50 @@ fn remove_all_positions_recursive(items: &mut [Stmt]) {
     }
 }
 
+/// Insert a simple node declaration for an implicit node.
+/// This is used when dragging an implicit node (created from a relation).
+/// Returns true if the node was inserted (i.e., it didn't already exist).
+pub fn insert_implicit_node(ast: &mut FileAst, node_id: &str, pos: PointI) -> bool {
+    // First check if node already exists
+    if node_exists(&ast.items, node_id) {
+        return false;
+    }
+    
+    // Create a simple node declaration
+    let node = NodeAst {
+        kind: "node".to_string(),
+        original_kind: "node".to_string(),
+        modifiers: vec!["rectangle".to_string()],
+        id: Ident(node_id.to_string()),
+        label: None,
+        pos: Some(pos),
+        width: None,
+        height: None,
+        body_lines: Vec::new(),
+        span: None,
+    };
+    
+    // Insert at the end of the file
+    ast.items.push(Stmt::Node(node));
+    true
+}
+
+/// Check if a node with the given ID exists in the AST
+fn node_exists(items: &[Stmt], node_id: &str) -> bool {
+    for stmt in items {
+        match stmt {
+            Stmt::Node(n) if n.id.0 == node_id => return true,
+            Stmt::Group(g) => {
+                if node_exists(&g.items, node_id) {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

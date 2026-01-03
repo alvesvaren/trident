@@ -11,9 +11,9 @@ use serde::Serialize;
 #[derive(Debug, Clone, Serialize)]
 pub struct NodeOutput {
     pub id: String,
-    /// Node kind: "class", "interface", "enum", etc.
+    /// Node kind: "class" or "node"
     pub kind: String,
-    /// Modifiers: "abstract", "static", etc.
+    /// Modifiers: "abstract", "interface", "enum", "rectangle", "circle", "diamond", etc.
     pub modifiers: Vec<String>,
     pub label: Option<String>,
     pub body_lines: Vec<String>,
@@ -22,6 +22,8 @@ pub struct NodeOutput {
     pub has_pos: bool,
     /// World position of parent group (for calculating local coords during drag)
     pub parent_offset: PointI,
+    /// Whether this node was explicitly declared (false for implicit nodes from relations)
+    pub explicit: bool,
 }
 
 /// An edge between two nodes
@@ -60,6 +62,9 @@ pub struct DiagramOutput {
     pub nodes: Vec<NodeOutput>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub edges: Vec<EdgeOutput>,
+    /// List of implicit node IDs (for editor info diagnostics)
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub implicit_nodes: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<ErrorInfo>,
 }

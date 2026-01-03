@@ -67,7 +67,9 @@ pub struct LayoutConfig {
     pub gap: i32,
     /// Max row width before wrapping. Small graphs can ignore.
     pub max_row_w: i32,
-    /// Size for nodes.
+    /// Size for class-kind nodes (UML boxes).
+    pub class_size: SizeI,
+    /// Size for node-kind nodes (shapes: rectangle, circle, diamond).
     pub node_size: SizeI,
     /// Minimum size for groups (even if empty).
     pub min_group_size: SizeI,
@@ -79,7 +81,8 @@ impl Default for LayoutConfig {
             group_padding: 24,
             gap: 24,
             max_row_w: 1000,
-            node_size: SizeI { w: 220, h: 120 },
+            class_size: SizeI { w: 220, h: 120 },
+            node_size: SizeI { w: 80, h: 80 },
             min_group_size: SizeI { w: 200, h: 120 },
         }
     }
@@ -138,6 +141,22 @@ pub fn layout_diagram_with_strategy<S: LayoutStrategy>(
 // Shared Utilities
 // ============================================================================
 
+use crate::parser::compile::Node;
+
+/// Get the size for a node, considering kind, custom dimensions, and config defaults.
+pub fn get_node_size(node: &Node, cfg: &LayoutConfig) -> SizeI {
+    let default = if node.kind == "node" {
+        cfg.node_size
+    } else {
+        cfg.class_size
+    };
+    
+    SizeI {
+        w: node.width.unwrap_or(default.w),
+        h: node.height.unwrap_or(default.h),
+    }
+}
+
 /// Compute a group's container bounds in LOCAL coordinates, based on children.
 /// This includes padding. If group has no children, returns min_group_size at (0,0).
 pub fn compute_group_local_bounds(
@@ -169,7 +188,8 @@ pub fn compute_group_local_bounds(
     // include child nodes
     for &nid in &g.children_nodes {
         let p = *node_local_pos.get(&nid).unwrap_or(&PointI { x: 0, y: 0 });
-        let sz = cfg.node_size;
+        let node = &diagram.nodes[nid.0];
+        let sz = get_node_size(node, cfg);
         let r = RectI { x: p.x, y: p.y, w: sz.w, h: sz.h };
         bb = if any { bb.union(&r) } else { any = true; r };
     }
