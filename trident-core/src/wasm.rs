@@ -119,44 +119,7 @@ pub fn compile_diagram(input: &str) -> String {
     to_string(&output).unwrap()
 }
 
-/// Update a node position and return the new source code
-#[wasm_bindgen]
-pub fn update_class_pos(source: &str, class_id: &str, x: i32, y: i32) -> String {
-    let mut ast = match parser::parse_file(source) {
-        Ok(ast) => ast,
-        Err(e) => {
-            console_error(&format!("Error parsing file: {:?}", e));
-            return source.to_string();
-        }
-    };
-    
-    let new_pos = PointI { x, y };
-    if parser::update_node_position(&mut ast, class_id, new_pos) {
-        parser::emit_file(&ast)
-    } else {
-        console_error(&format!("Node '{}' not found", class_id));
-        source.to_string()
-    }
-}
 
-/// Update a node size and return the new source code
-#[wasm_bindgen]
-pub fn update_class_size(source: &str, class_id: &str, width: i32, height: i32) -> String {
-    let mut ast = match parser::parse_file(source) {
-        Ok(ast) => ast,
-        Err(e) => {
-            console_error(&format!("Error parsing file: {:?}", e));
-            return source.to_string();
-        }
-    };
-    
-    if parser::update_node_size(&mut ast, class_id, width, height) {
-        parser::emit_file(&ast)
-    } else {
-        console_error(&format!("Node '{}' not found", class_id));
-        source.to_string()
-    }
-}
 
 /// Update a node's geometry (position and size) and return the new source code
 #[wasm_bindgen]
