@@ -224,10 +224,10 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
         // since I'm implementing the logic here.
 
         const d = currentDrag;
-        const newX = d.newX ?? d.initialX; // Position X
-        const newY = d.newY ?? d.initialY; // Position Y
-        const newW = d.newW ?? d.startW; // Width
-        const newH = d.newH ?? d.startH; // Height
+        const newX = d.newX ?? d.initialX ?? 0;
+        const newY = d.newY ?? d.initialY ?? 0;
+        const newW = d.newW ?? d.startW ?? 0;
+        const newH = d.newH ?? d.startH ?? 0;
 
         const localX = newX - (d.parentOffsetX ?? 0);
         const localY = newY - (d.parentOffsetY ?? 0);
@@ -271,11 +271,11 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
         // I'll update startNodeResize to store initialX/initialY in `dragState` (using extra props).
 
         const d = dragState;
-        const initialW = d.startW;
-        const initialH = d.startH;
-        const initialX = d.initialX; // Need to ensure these are set
-        const initialY = d.initialY;
-        const handle = d.resizeHandle;
+        const initialW = d.startW ?? 0;
+        const initialH = d.startH ?? 0;
+        const initialX = d.initialX ?? 0;
+        const initialY = d.initialY ?? 0;
+        const handle = d.resizeHandle ?? "";
 
         let newW = initialW;
         let newH = initialH;
