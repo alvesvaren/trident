@@ -6,10 +6,6 @@ import type { ErrorInfo } from "../../types/diagram";
 import { useTheme } from "../../hooks/useTheme";
 
 export interface CodeEditorRef {
-  /** Get the current editor value (always up-to-date, even during silent updates) */
-  getValue: () => string;
-  /** Update the editor content without creating an undo stop (for drag operations) */
-  silentSetValue: (value: string) => void;
   /** Push an undo stop (call after drag ends to mark the undo point) */
   pushUndoStop: () => void;
   /** Trigger undo */
@@ -29,66 +25,20 @@ interface CodeEditorProps {
 export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(function CodeEditor({ value, onChange, error, implicitNodes }, ref) {
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
-  // Flag to suppress onChange callback during silent updates
-  const suppressOnChangeRef = useRef(false);
   const { resolvedTheme } = useTheme();
   const editorTheme = resolvedTheme === "dark" ? "trident-dark" : "trident-light";
 
   useImperativeHandle(
     ref,
     () => ({
-      getValue: () => {
-        const editor = editorRef.current;
-        if (!editor) return "";
-        const model = editor.getModel();
-        if (!model) return "";
-        return model.getValue();
-      },
-      silentSetValue: (newValue: string) => {
-        const editor = editorRef.current;
-        if (!editor) return;
-
-        const model = editor.getModel();
-        if (!model) return;
-
-        // Get the full range of the document
-        const fullRange = model.getFullModelRange();
-
-        // Suppress onChange during this edit
-        suppressOnChangeRef.current = true;
-
-        // Execute edit without pushing undo stop
-        // This groups all drag updates into a single undo action
-        editor.executeEdits("drag-update", [
-          {
-            range: fullRange,
-            text: newValue,
-            forceMoveMarkers: true,
-          },
-        ]);
-
-        // Re-enable onChange after a microtask to ensure the event has fired
-        queueMicrotask(() => {
-          suppressOnChangeRef.current = false;
-        });
-      },
       pushUndoStop: () => {
-        const editor = editorRef.current;
-        if (editor) {
-          editor.pushUndoStop();
-        }
+        editorRef.current?.pushUndoStop();
       },
       undo: () => {
-        const editor = editorRef.current;
-        if (editor) {
-          editor.trigger("keyboard", "undo", null);
-        }
+        editorRef.current?.trigger("keyboard", "undo", null);
       },
       redo: () => {
-        const editor = editorRef.current;
-        if (editor) {
-          editor.trigger("keyboard", "redo", null);
-        }
+        editorRef.current?.trigger("keyboard", "redo", null);
       },
     }),
     []
@@ -164,8 +114,6 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(function Co
 
   const handleChange = useCallback(
     (newValue: string | undefined) => {
-      // Skip if we're in a silent update
-      if (suppressOnChangeRef.current) return;
       onChange(newValue ?? "");
     },
     [onChange]
