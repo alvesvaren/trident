@@ -23,29 +23,32 @@ interface UseDiagramDragResult {
 export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDragOptions): UseDiagramDragResult {
   const [dragState, setDragState] = useState<DragState | null>(null);
   const scaleRef = useRef<number>(1);
+
+  // Always track the latest code - updated from props AND after silent updates
+  // This is the single source of truth for current code state
+  const latestCodeRef = useRef(code);
+  latestCodeRef.current = code; // Sync from props on every render
+
   // Track the current code during drag (separate from React state)
   const dragCodeRef = useRef<string | null>(null);
   const lastLayoutUpdateRef = useRef<number>(0);
   // Track if we've made any updates during this drag (to know if we need undo stop)
   const hasUpdatedRef = useRef(false);
 
-  // Helper to get the current source code - prefers editor value (always up-to-date) over React state
-  const getSourceCode = useCallback(() => {
-    return editorRef?.current?.getValue() ?? code;
-  }, [editorRef, code]);
-
   const startNodeDrag = useCallback(
     (e: React.MouseEvent, node: DiagramNode) => {
       e.preventDefault();
       e.stopPropagation();
       hasUpdatedRef.current = false;
-      let sourceCode = getSourceCode();
+      let sourceCode = latestCodeRef.current;
 
       // If node is implicit, insert a declaration first
       if (!node.explicit) {
         const localX = node.bounds.x - node.parent_offset.x;
         const localY = node.bounds.y - node.parent_offset.y;
         sourceCode = trident_core.insert_implicit_node(sourceCode, node.id, localX, localY);
+        // Keep latestCodeRef in sync after this modification
+        latestCodeRef.current = sourceCode;
       }
 
       dragCodeRef.current = sourceCode;
@@ -67,7 +70,7 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
         startH: node.bounds.h,
       });
     },
-    [editorRef, getSourceCode]
+    [editorRef]
   );
 
   const startNodeResize = useCallback(
@@ -75,7 +78,7 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
       e.preventDefault();
       e.stopPropagation();
       hasUpdatedRef.current = false;
-      dragCodeRef.current = getSourceCode();
+      dragCodeRef.current = latestCodeRef.current;
 
       // If node is implicit, we should probably insert it, but for now duplicate the logic or assume it exists
       // (Resizing implicit nodes might be edge case, but safe to assume standard flow)
@@ -100,7 +103,7 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
         startH: node.bounds.h,
       });
     },
-    [editorRef, getSourceCode]
+    [editorRef]
   );
 
   const startGroupDrag = useCallback(
@@ -108,7 +111,7 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
       e.preventDefault();
       e.stopPropagation();
       hasUpdatedRef.current = false;
-      dragCodeRef.current = getSourceCode();
+      dragCodeRef.current = latestCodeRef.current;
       // Push undo stop before starting drag to mark the "before" state
       editorRef?.current?.pushUndoStop();
       setDragState({
@@ -125,7 +128,7 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
         currentY: group.bounds.y,
       });
     },
-    [editorRef, getSourceCode]
+    [editorRef]
   );
 
   // Use document-level event listeners to prevent dropping when moving fast
@@ -135,7 +138,7 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
     // Helper function to update the code/layout
     const updateLayout = (currentDrag: DragState, isFinal: boolean) => {
       // Use drag code ref for incremental updates during drag
-      const sourceCode = dragCodeRef.current ?? getSourceCode();
+      const sourceCode = dragCodeRef.current ?? latestCodeRef.current;
       let newCode: string;
 
       if (currentDrag.type === "node") {
@@ -227,6 +230,9 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
       if (newCode !== sourceCode) {
         hasUpdatedRef.current = true;
         dragCodeRef.current = newCode;
+        // CRITICAL: Keep latestCodeRef in sync even during silent updates
+        // This ensures any subsequent drag starts with the correct code
+        latestCodeRef.current = newCode;
 
         if (isFinal) {
           // Commit the final code change - App.tsx's useMemo will recompile
