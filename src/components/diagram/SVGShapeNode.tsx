@@ -30,7 +30,7 @@ export function SVGShapeNode({ node, x, y, onMouseDown, onUnlock, onResizeStart,
   const textColor = "var(--canvas-text)";
   const strokeColor = "var(--canvas-border)";
   const fillColor = "var(--canvas-node-bg)";
-  
+
   // Resize handle styling
   const handleSize = 8;
   const handleStyle: React.CSSProperties = {
@@ -39,20 +39,16 @@ export function SVGShapeNode({ node, x, y, onMouseDown, onUnlock, onResizeStart,
     strokeWidth: 1,
     cursor: "pointer",
   };
-  
+
   // Helper to create a resize handle
-  const ResizeHandle = ({ 
-    cx, cy, cursor, handle 
-  }: { 
-    cx: number, cy: number, cursor: string, handle: "nw" | "ne" | "sw" | "se" | "n" | "e" | "s" | "w" 
-  }) => (
-    <rect 
-      x={cx - handleSize/2} 
-      y={cy - handleSize/2} 
-      width={handleSize} 
+  const ResizeHandle = ({ cx, cy, cursor, handle }: { cx: number; cy: number; cursor: string; handle: "nw" | "ne" | "sw" | "se" | "n" | "e" | "s" | "w" }) => (
+    <rect
+      x={cx - handleSize / 2}
+      y={cy - handleSize / 2}
+      width={handleSize}
       height={handleSize}
       style={{ ...handleStyle, cursor }}
-      onMouseDown={(e) => {
+      onMouseDown={e => {
         e.stopPropagation();
         onResizeStart?.(e, node, handle);
       }}
@@ -73,9 +69,9 @@ export function SVGShapeNode({ node, x, y, onMouseDown, onUnlock, onResizeStart,
         {label}
       </text>
 
-      {/* Resize Handles - Only show when not exporting and we have a resize callback */}
+      {/* Resize Handles */}
       {!exportMode && onResizeStart && (
-        <g className="resize-handles" style={{ opacity: 0, transition: 'opacity 0.2s' }}>
+        <g className='resize-handles' style={{ opacity: 0, transition: "opacity 0.2s" }}>
           {/* We use specific class on parent group to show handles on hover? 
               Actually, React doesn't support parent hover easily. 
               Let's make them always visible but subtle, or rely on CSS .node:hover .resize-handles (if we had access to parent).
@@ -88,18 +84,18 @@ export function SVGShapeNode({ node, x, y, onMouseDown, onUnlock, onResizeStart,
           <style>{`
             g:hover > .resize-handles { opacity: 1 !important; }
           `}</style>
-          
+
           {/* Corners */}
-          <ResizeHandle cx={0} cy={0} cursor="nw-resize" handle="nw" />
-          <ResizeHandle cx={w} cy={0} cursor="ne-resize" handle="ne" />
-          <ResizeHandle cx={w} cy={h} cursor="se-resize" handle="se" />
-          <ResizeHandle cx={0} cy={h} cursor="sw-resize" handle="sw" />
-          
+          <ResizeHandle cx={0} cy={0} cursor='nw-resize' handle='nw' />
+          <ResizeHandle cx={w} cy={0} cursor='ne-resize' handle='ne' />
+          <ResizeHandle cx={w} cy={h} cursor='se-resize' handle='se' />
+          <ResizeHandle cx={0} cy={h} cursor='sw-resize' handle='sw' />
+
           {/* Edges */}
-          <ResizeHandle cx={cx} cy={0} cursor="n-resize" handle="n" />
-          <ResizeHandle cx={w} cy={cy} cursor="e-resize" handle="e" />
-          <ResizeHandle cx={cx} cy={h} cursor="s-resize" handle="s" />
-          <ResizeHandle cx={0} cy={cy} cursor="w-resize" handle="w" />
+          <ResizeHandle cx={cx} cy={0} cursor='n-resize' handle='n' />
+          <ResizeHandle cx={w} cy={cy} cursor='e-resize' handle='e' />
+          <ResizeHandle cx={cx} cy={h} cursor='s-resize' handle='s' />
+          <ResizeHandle cx={0} cy={cy} cursor='w-resize' handle='w' />
         </g>
       )}
 

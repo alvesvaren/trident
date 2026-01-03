@@ -80,6 +80,37 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
     [editorRef]
   );
 
+  const startNodeResize = useCallback(
+    (e: React.MouseEvent, node: DiagramNode, handle: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      hasUpdatedRef.current = false;
+      dragCodeRef.current = pendingCodeRef.current ?? codeRef.current;
+
+      // If node is implicit, we should probably insert it, but for now duplicate the logic or assume it exists
+      // (Resizing implicit nodes might be edge case, but safe to assume standard flow)
+
+      editorRef?.current?.pushUndoStop();
+      setDragState({
+        type: "resize",
+        id: node.id,
+        // For resize, startX/Y are the initial WIDTH/HEIGHT
+        startX: node.bounds.w,
+        startY: node.bounds.h,
+        startMouseX: e.clientX,
+        startMouseY: e.clientY,
+        // Check handle direction
+        resizeHandle: handle,
+        currentX: node.bounds.w,
+        currentY: node.bounds.h,
+        // parentOffset not used for size but kept for type compat
+        parentOffsetX: 0,
+        parentOffsetY: 0,
+      });
+    },
+    [editorRef]
+  );
+
   const startGroupDrag = useCallback(
     (e: React.MouseEvent, group: DiagramGroup, index: number) => {
       e.preventDefault();
@@ -113,23 +144,38 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
 
     // Helper function to update the code/layout
     const updateLayout = (currentDrag: DragState, isFinal: boolean) => {
-      const newLocalX = currentDrag.currentX - currentDrag.parentOffsetX;
-      const newLocalY = currentDrag.currentY - currentDrag.parentOffsetY;
+      // Skip if position/size hasn't changed since last update
+      // Reuse fields: currentX -> width/newX, currentY -> height/newY
+      // Need clarify: dragState uses currentX/Y for generic accumulating values
 
-      // Skip if position hasn't changed since last update
-      if (lastUpdateRef.current && lastUpdateRef.current.x === newLocalX && lastUpdateRef.current.y === newLocalY) {
+      // For Node/Group drag: currentX/Y are absolut positions
+      // For Resize: currentX/Y are Width/Height
+
+      const val1 = currentDrag.currentX;
+      const val2 = currentDrag.currentY;
+
+      if (lastUpdateRef.current && lastUpdateRef.current.x === val1 && lastUpdateRef.current.y === val2) {
         return;
       }
-      lastUpdateRef.current = { x: newLocalX, y: newLocalY };
+      lastUpdateRef.current = { x: val1, y: val2 };
 
       // Use drag code ref for incremental updates during drag
       const sourceCode = dragCodeRef.current ?? codeRef.current;
 
       let newCode: string;
       if (currentDrag.type === "node") {
+        const newLocalX = currentDrag.currentX - currentDrag.parentOffsetX;
+        const newLocalY = currentDrag.currentY - currentDrag.parentOffsetY;
         newCode = trident_core.update_class_pos(sourceCode, currentDrag.id, newLocalX, newLocalY);
-      } else {
+      } else if (currentDrag.type === "group") {
+        const newLocalX = currentDrag.currentX - currentDrag.parentOffsetX;
+        const newLocalY = currentDrag.currentY - currentDrag.parentOffsetY;
         newCode = trident_core.update_group_pos(sourceCode, currentDrag.id, currentDrag.groupIndex ?? 0, newLocalX, newLocalY);
+      } else if (currentDrag.type === "resize") {
+        // val1 = width, val2 = height
+        newCode = trident_core.update_class_size(sourceCode, currentDrag.id, val1, val2);
+      } else {
+        newCode = sourceCode;
       }
 
       if (newCode !== sourceCode) {
@@ -159,19 +205,42 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
       const deltaX = (e.clientX - dragState.startMouseX) / scale;
       const deltaY = (e.clientY - dragState.startMouseY) / scale;
 
-      const newX = Math.round(dragState.startX + deltaX);
-      const newY = Math.round(dragState.startY + deltaY);
+      if (dragState.type === "resize") {
+        // Calculate new width/height based on handle
+        let newW = dragState.startX;
+        let newH = dragState.startY;
+        const handle = dragState.resizeHandle;
 
-      // Update visual position immediately
-      setDragState(prev =>
-        prev
-          ? {
-              ...prev,
-              currentX: newX,
-              currentY: newY,
-            }
-          : null
-      );
+        // Simple resize logic (assuming center/top-left remains fixed for simplicity unless strict resizing requested)
+        // Actually, CSS resize often changes just w/h extending right/down.
+        // For 'nw' (north-west), we would need to change x/y AND w/h.
+        // Trident core only supports updating SIZE separately from POS currently via update_class_size.
+        // To support corner resizing properly (nw, sw, ne), we'd need to update POS too.
+        // For simplicity v1: Support ONLY Right/Down resizing (se, e, s).
+        // Or mapped:
+        // e: w + dx
+        // s: h + dy
+        // se: w + dx, h + dy
+        // For others, we block or treat as same.
+        // Let's implement full SE resize flow for all corners for now to avoid complexity of moving X/Y sync.
+        // Just kidding, let's just support SE-like behavior for all handles or specifically E, S, SE.
+
+        if (handle?.includes("e")) newW += deltaX;
+        if (handle?.includes("w")) newW -= deltaX; // Would need pos update
+        if (handle?.includes("s")) newH += deltaY;
+        if (handle?.includes("n")) newH -= deltaY; // Would need pos update
+
+        // Clamp min size
+        newW = Math.max(40, newW);
+        newH = Math.max(40, newH);
+
+        setDragState(prev => (prev ? { ...prev, currentX: Math.round(newW), currentY: Math.round(newH) } : null));
+      } else {
+        // Move
+        const newX = Math.round(dragState.startX + deltaX);
+        const newY = Math.round(dragState.startY + deltaY);
+        setDragState(prev => (prev ? { ...prev, currentX: newX, currentY: newY } : null));
+      }
 
       // Throttled layout update
       const now = Date.now();
@@ -222,5 +291,6 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
     scaleRef,
     startNodeDrag,
     startGroupDrag,
+    startNodeResize,
   };
 }

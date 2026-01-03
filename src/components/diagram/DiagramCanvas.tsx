@@ -199,7 +199,7 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { resolvedTheme, setTheme } = useTheme();
-  const { dragState, dragResult, scaleRef, startNodeDrag, startGroupDrag } = useDiagramDrag({ code, onCodeChange, editorRef });
+  const { dragState, dragResult, scaleRef, startNodeDrag, startGroupDrag, startNodeResize } = useDiagramDrag({ code, onCodeChange, editorRef });
 
   const toggleTheme = useCallback(() => {
     setTheme(resolvedTheme === "dark" ? "light" : "dark");
@@ -472,6 +472,7 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
                   y={y}
                   onMouseDown={e => startNodeDrag(e as unknown as React.MouseEvent, node)}
                   onUnlock={e => handleUnlock(node.id, e as unknown as React.MouseEvent)}
+                  onResizeStart={startNodeResize}
                 />
               );
             })}
