@@ -8,7 +8,8 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use crate::parser::{PointI, Diagram, GroupId, NodeId};
-use super::{RectI, LayoutConfig, SizeI, get_node_size};
+use super::{RectI, LayoutConfig, get_node_size};
+
 use super::spatial_grid::SpatialGrid;
 use super::adjacency::Adjacency;
 

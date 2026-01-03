@@ -56,7 +56,7 @@ export interface DiagramOutput {
 
 /** Drag state for tracking node/group dragging */
 export interface DragState {
-  type: "node" | "group";
+  type: "node" | "group" | "resize";
   id: string;
   groupIndex?: number;
   startX: number;
@@ -67,4 +67,14 @@ export interface DragState {
   parentOffsetY: number;
   currentX: number;
   currentY: number;
+  // Resize specific
+  resizeHandle?: string;
+  startW?: number;
+  startH?: number;
+  initialX?: number;
+  initialY?: number;
+  newX?: number;
+  newY?: number;
+  newW?: number;
+  newH?: number;
 }

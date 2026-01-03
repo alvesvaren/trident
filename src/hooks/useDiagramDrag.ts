@@ -19,6 +19,7 @@ interface UseDiagramDragResult {
   scaleRef: React.MutableRefObject<number>;
   startNodeDrag: (e: React.MouseEvent, node: DiagramNode) => void;
   startGroupDrag: (e: React.MouseEvent, group: DiagramGroup, index: number) => void;
+  startNodeResize: (e: React.MouseEvent, node: DiagramNode, handle: string) => void;
 }
 
 export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDragOptions): UseDiagramDragResult {
@@ -78,7 +79,7 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
         // Helper props for new update logic
         startW: node.bounds.w,
         startH: node.bounds.h,
-      } as any);
+      });
     },
     [editorRef]
   );
@@ -111,7 +112,7 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
         initialY: node.bounds.y,
         startW: node.bounds.w,
         startH: node.bounds.h,
-      } as any);
+      });
     },
     [editorRef]
   );
@@ -222,7 +223,7 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
         // and here I will read them. I'll cast `currentDrag` to `any` to access new props if needed,
         // since I'm implementing the logic here.
 
-        const d = currentDrag as any;
+        const d = currentDrag;
         const newX = d.newX ?? d.initialX; // Position X
         const newY = d.newY ?? d.initialY; // Position Y
         const newW = d.newW ?? d.startW; // Width
@@ -269,7 +270,7 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
         // In startNodeResize I didn't store initial X/Y. I NEED to.
         // I'll update startNodeResize to store initialX/initialY in `dragState` (using extra props).
 
-        const d = dragState as any;
+        const d = dragState;
         const initialW = d.startW;
         const initialH = d.startH;
         const initialX = d.initialX; // Need to ensure these are set
@@ -318,7 +319,7 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
 
         setDragState(prev =>
           prev
-            ? ({
+            ? {
                 ...prev,
                 newX,
                 newY,
@@ -327,7 +328,7 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
                 // Update currentX/Y purely for debugging or unused, since we use newX/Y/W/H
                 currentX: newX,
                 currentY: newY,
-              } as any)
+              }
             : null
         );
       } else {
