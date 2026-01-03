@@ -133,23 +133,39 @@ export function SVGNode({ node, x, y, onMouseDown, onUnlock, onResizeStart, expo
 
       {/* Resize Handles */}
       {!exportMode && onResizeStart && (
-        <g className='resize-handles' style={{ opacity: 0, transition: "opacity 0.2s" }}>
-          <style>{`
-                        g:hover > .resize-handles { opacity: 1 !important; }
-                    `}</style>
+        <>
+          {/* Invisible sensor for edge detection */}
+          <rect
+            className='edge-sensor'
+            x={0}
+            y={0}
+            width={w}
+            height={h}
+            fill='none'
+            stroke='transparent'
+            strokeWidth={20}
+            style={{ pointerEvents: "stroke" }}
+          />
 
-          {/* Corners */}
-          <ResizeHandle cx={0} cy={0} cursor='nw-resize' handle='nw' />
-          <ResizeHandle cx={w} cy={0} cursor='ne-resize' handle='ne' />
-          <ResizeHandle cx={w} cy={h} cursor='se-resize' handle='se' />
-          <ResizeHandle cx={0} cy={h} cursor='sw-resize' handle='sw' />
+          <g className='resize-handles' style={{ opacity: 0, transition: "opacity 0.2s" }}>
+            <style>{`
+              .edge-sensor:hover ~ .resize-handles,
+              .resize-handles:hover { opacity: 1 !important; }
+            `}</style>
 
-          {/* Edges */}
-          <ResizeHandle cx={cx} cy={0} cursor='n-resize' handle='n' />
-          <ResizeHandle cx={w} cy={cy} cursor='e-resize' handle='e' />
-          <ResizeHandle cx={cx} cy={h} cursor='s-resize' handle='s' />
-          <ResizeHandle cx={0} cy={cy} cursor='w-resize' handle='w' />
-        </g>
+            {/* Corners */}
+            <ResizeHandle cx={0} cy={0} cursor='nw-resize' handle='nw' />
+            <ResizeHandle cx={w} cy={0} cursor='ne-resize' handle='ne' />
+            <ResizeHandle cx={w} cy={h} cursor='se-resize' handle='se' />
+            <ResizeHandle cx={0} cy={h} cursor='sw-resize' handle='sw' />
+
+            {/* Edges */}
+            <ResizeHandle cx={cx} cy={0} cursor='n-resize' handle='n' />
+            <ResizeHandle cx={w} cy={cy} cursor='e-resize' handle='e' />
+            <ResizeHandle cx={cx} cy={h} cursor='s-resize' handle='s' />
+            <ResizeHandle cx={0} cy={cy} cursor='w-resize' handle='w' />
+          </g>
+        </>
       )}
 
       {/* Lock icon */}
