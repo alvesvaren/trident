@@ -23,20 +23,23 @@ interface UseDiagramDragResult {
 export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDragOptions): UseDiagramDragResult {
   const [dragState, setDragState] = useState<DragState | null>(null);
   const scaleRef = useRef<number>(1);
-  const codeRef = useRef(code);
-  codeRef.current = code;
   // Track the current code during drag (separate from React state)
   const dragCodeRef = useRef<string | null>(null);
   const lastLayoutUpdateRef = useRef<number>(0);
   // Track if we've made any updates during this drag (to know if we need undo stop)
   const hasUpdatedRef = useRef(false);
 
+  // Helper to get the current source code - prefers editor value (always up-to-date) over React state
+  const getSourceCode = useCallback(() => {
+    return editorRef?.current?.getValue() ?? code;
+  }, [editorRef, code]);
+
   const startNodeDrag = useCallback(
     (e: React.MouseEvent, node: DiagramNode) => {
       e.preventDefault();
       e.stopPropagation();
       hasUpdatedRef.current = false;
-      let sourceCode = codeRef.current;
+      let sourceCode = getSourceCode();
 
       // If node is implicit, insert a declaration first
       if (!node.explicit) {
@@ -64,7 +67,7 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
         startH: node.bounds.h,
       });
     },
-    [editorRef]
+    [editorRef, getSourceCode]
   );
 
   const startNodeResize = useCallback(
@@ -72,7 +75,7 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
       e.preventDefault();
       e.stopPropagation();
       hasUpdatedRef.current = false;
-      dragCodeRef.current = codeRef.current;
+      dragCodeRef.current = getSourceCode();
 
       // If node is implicit, we should probably insert it, but for now duplicate the logic or assume it exists
       // (Resizing implicit nodes might be edge case, but safe to assume standard flow)
@@ -97,7 +100,7 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
         startH: node.bounds.h,
       });
     },
-    [editorRef]
+    [editorRef, getSourceCode]
   );
 
   const startGroupDrag = useCallback(
@@ -105,7 +108,7 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
       e.preventDefault();
       e.stopPropagation();
       hasUpdatedRef.current = false;
-      dragCodeRef.current = codeRef.current;
+      dragCodeRef.current = getSourceCode();
       // Push undo stop before starting drag to mark the "before" state
       editorRef?.current?.pushUndoStop();
       setDragState({
@@ -122,7 +125,7 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
         currentY: group.bounds.y,
       });
     },
-    [editorRef]
+    [editorRef, getSourceCode]
   );
 
   // Use document-level event listeners to prevent dropping when moving fast
@@ -132,7 +135,7 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
     // Helper function to update the code/layout
     const updateLayout = (currentDrag: DragState, isFinal: boolean) => {
       // Use drag code ref for incremental updates during drag
-      const sourceCode = dragCodeRef.current ?? codeRef.current;
+      const sourceCode = dragCodeRef.current ?? getSourceCode();
       let newCode: string;
 
       if (currentDrag.type === "node") {

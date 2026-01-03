@@ -6,6 +6,8 @@ import type { ErrorInfo } from "../../types/diagram";
 import { useTheme } from "../../hooks/useTheme";
 
 export interface CodeEditorRef {
+  /** Get the current editor value (always up-to-date, even during silent updates) */
+  getValue: () => string;
   /** Update the editor content without creating an undo stop (for drag operations) */
   silentSetValue: (value: string) => void;
   /** Push an undo stop (call after drag ends to mark the undo point) */
@@ -35,6 +37,13 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(function Co
   useImperativeHandle(
     ref,
     () => ({
+      getValue: () => {
+        const editor = editorRef.current;
+        if (!editor) return "";
+        const model = editor.getModel();
+        if (!model) return "";
+        return model.getValue();
+      },
       silentSetValue: (newValue: string) => {
         const editor = editorRef.current;
         if (!editor) return;
