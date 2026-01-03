@@ -184,6 +184,25 @@ pub fn remove_all_pos(source: &str) -> String {
     parser::emit_file(&ast)
 }
 
+/// Remove a specific node's position (unlock it)
+#[wasm_bindgen]
+pub fn remove_class_pos(source: &str, node_id: &str) -> String {
+    let mut ast = match parser::parse_file(source) {
+        Ok(ast) => ast,
+        Err(e) => {
+            console_error(&format!("Error parsing file: {:?}", e));
+            return source.to_string();
+        }
+    };
+    
+    if parser::remove_node_position(&mut ast, node_id) {
+        parser::emit_file(&ast)
+    } else {
+        console_error(&format!("Node '{}' not found", node_id));
+        source.to_string()
+    }
+}
+
 /// Insert a node declaration for an implicit node (created from a relation).
 /// This is used when starting to drag an implicit node to make it explicit.
 /// Returns the updated source code.
