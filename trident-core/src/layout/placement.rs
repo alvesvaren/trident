@@ -8,7 +8,8 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use crate::parser::{PointI, Diagram, GroupId, NodeId};
-use super::{RectI, LayoutConfig};
+use super::{RectI, LayoutConfig, get_node_size};
+
 use super::spatial_grid::SpatialGrid;
 use super::adjacency::Adjacency;
 
@@ -57,7 +58,8 @@ pub fn layout_group_children_graph_driven(
     }
 
     // 3. Initialize spatial grid with fixed items
-    let cell_size = cfg.node_size.w.max(cfg.node_size.h);
+    // Use max of class and node sizes for cell sizing
+    let cell_size = cfg.class_size.w.max(cfg.class_size.h).max(cfg.node_size.w).max(cfg.node_size.h);
     let mut spatial = SpatialGrid::new(cell_size);
 
     for cgid in &fixed_groups {
@@ -69,7 +71,9 @@ pub fn layout_group_children_graph_driven(
     }
     for nid in &fixed_nodes {
         let p = *node_local_pos.get(nid).unwrap();
-        spatial.insert(RectI { x: p.x, y: p.y, w: cfg.node_size.w, h: cfg.node_size.h });
+        let node = &diagram.nodes[nid.0];
+        let sz = get_node_size(node, cfg);
+        spatial.insert(RectI { x: p.x, y: p.y, w: sz.w, h: sz.h });
     }
 
     // 4. Place free groups FIRST (Hierarchical)
@@ -296,7 +300,8 @@ fn layout_nodes_hierarchical(
     let mut visited: HashSet<NodeId> = HashSet::new();
     let mut queue: VecDeque<(NodeId, i32)> = VecDeque::new();
 
-    let layer_height = cfg.node_size.h + cfg.gap * 2;
+    // Use class_size for layer calculations (largest node type)
+    let layer_height = cfg.class_size.h + cfg.gap * 2;
 
     // Seed Fixed Nodes as Visited/Ranked based on Y position
     for &fnid in fixed_nodes {
@@ -412,8 +417,9 @@ fn layout_nodes_hierarchical(
     // 4. Assign Grid Positions
     let start_x = cfg.group_padding;
     let start_y = cfg.group_padding;
-    let col_width = cfg.node_size.w + cfg.gap;
-    let row_height = cfg.node_size.h + cfg.gap * 2;
+    // Use class_size for grid calculations (largest node type)
+    let col_width = cfg.class_size.w + cfg.gap;
+    let row_height = cfg.class_size.h + cfg.gap * 2;
 
     let mut next_y = start_y;
 
@@ -426,10 +432,12 @@ fn layout_nodes_hierarchical(
             let limit_w = if cfg.max_row_w > 0 { cfg.max_row_w } else { 1200 };
 
             for &nid in row_nodes.iter() {
+                 let node = &diagram.nodes[nid.0];
+                 let node_sz = get_node_size(node, cfg);
                  let mut pos = PointI { x: current_x, y: current_y };
                  
                  // Check wrapping
-                 if current_x + col_width > limit_w && current_x > start_x {
+                 if current_x + node_sz.w > limit_w && current_x > start_x {
                      current_x = start_x;
                      current_y += row_height;
                      pos.x = current_x;
@@ -438,21 +446,21 @@ fn layout_nodes_hierarchical(
                  
                  // Check overlap (backup)
                  let mut safe_pos = pos;
-                 let mut rect = RectI { x: safe_pos.x, y: safe_pos.y, w: cfg.node_size.w, h: cfg.node_size.h };
+                 let mut rect = RectI { x: safe_pos.x, y: safe_pos.y, w: node_sz.w, h: node_sz.h };
                  while spatial.overlaps_any(&rect) {
                      safe_pos.x += col_width;
-                      if safe_pos.x + col_width > limit_w {
+                      if safe_pos.x + node_sz.w > limit_w {
                          safe_pos.x = start_x;
                          safe_pos.y += row_height;
                       }
-                      rect = RectI { x: safe_pos.x, y: safe_pos.y, w: cfg.node_size.w, h: cfg.node_size.h };
+                      rect = RectI { x: safe_pos.x, y: safe_pos.y, w: node_sz.w, h: node_sz.h };
                  }
 
-                 current_x = safe_pos.x + col_width;
+                 current_x = safe_pos.x + node_sz.w + cfg.gap;
                  current_y = safe_pos.y;
                  
                  node_local_pos.insert(nid, safe_pos);
-                 spatial.insert(RectI { x: safe_pos.x, y: safe_pos.y, w: cfg.node_size.w, h: cfg.node_size.h });
+                 spatial.insert(RectI { x: safe_pos.x, y: safe_pos.y, w: node_sz.w, h: node_sz.h });
             }
             next_y = current_y + row_height;
         }

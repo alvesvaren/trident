@@ -31,6 +31,63 @@ pub fn update_group_position(
     )
 }
 
+/// Update the size of a node by ID.
+/// Returns true if the node was found and updated.
+pub fn update_node_size(ast: &mut FileAst, node_id: &str, width: i32, height: i32) -> bool {
+    find_and_update_node_size(&mut ast.items, node_id, width, height)
+}
+
+/// Update the geometry (position and size) of a node by ID.
+/// Returns true if the node was found and updated.
+pub fn update_node_geometry(ast: &mut FileAst, node_id: &str, x: i32, y: i32, width: Option<i32>, height: Option<i32>) -> bool {
+    find_and_update_node_geometry(&mut ast.items, node_id, PointI { x, y }, width, height)
+}
+
+/// Recursively search for a node by ID and update its geometry
+fn find_and_update_node_geometry(items: &mut [Stmt], node_id: &str, new_pos: PointI, width: Option<i32>, height: Option<i32>) -> bool {
+    for stmt in items {
+        match stmt {
+            Stmt::Node(n) if n.id.0 == node_id => {
+                n.pos = Some(new_pos);
+                if let Some(w) = width {
+                    n.width = Some(w);
+                }
+                if let Some(h) = height {
+                    n.height = Some(h);
+                }
+                return true;
+            }
+            Stmt::Group(g) => {
+                if find_and_update_node_geometry(&mut g.items, node_id, new_pos, width, height) {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Recursively search for a node by ID and update its size
+fn find_and_update_node_size(items: &mut [Stmt], node_id: &str, width: i32, height: i32) -> bool {
+    for stmt in items {
+        match stmt {
+            Stmt::Node(n) if n.id.0 == node_id => {
+                n.width = Some(width);
+                n.height = Some(height);
+                return true;
+            }
+            Stmt::Group(g) => {
+                if find_and_update_node_size(&mut g.items, node_id, width, height) {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
 /// Recursively search for a node by ID and update its position
 fn find_and_update_node(items: &mut [Stmt], node_id: &str, new_pos: PointI) -> bool {
     for stmt in items {
@@ -58,7 +115,7 @@ fn find_and_update_group(
     target_index: usize,
     current_index: &mut usize,
     new_pos: PointI,
-) -> bool {
+    ) -> bool {
     for stmt in items {
         if let Stmt::Group(g) = stmt {
             // Check if this is the target group
@@ -132,6 +189,50 @@ fn remove_all_positions_recursive(items: &mut [Stmt]) {
             _ => {}
         }
     }
+}
+
+/// Insert a simple node declaration for an implicit node.
+/// This is used when dragging an implicit node (created from a relation).
+/// Returns true if the node was inserted (i.e., it didn't already exist).
+pub fn insert_implicit_node(ast: &mut FileAst, node_id: &str, pos: PointI) -> bool {
+    // First check if node already exists
+    if node_exists(&ast.items, node_id) {
+        return false;
+    }
+    
+    // Create a simple node declaration
+    let node = NodeAst {
+        kind: "node".to_string(),
+        original_kind: "node".to_string(),
+        modifiers: Vec::new(), // Was vec!["rectangle"], now empty per user request
+        id: Ident(node_id.to_string()),
+        label: None,
+        pos: Some(pos),
+        width: None,
+        height: None,
+        body_lines: Vec::new(),
+        span: None,
+    };
+    
+    // Insert at the end of the file
+    ast.items.push(Stmt::Node(node));
+    true
+}
+
+/// Check if a node with the given ID exists in the AST
+fn node_exists(items: &[Stmt], node_id: &str) -> bool {
+    for stmt in items {
+        match stmt {
+            Stmt::Node(n) if n.id.0 == node_id => return true,
+            Stmt::Group(g) => {
+                if node_exists(&g.items, node_id) {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
 }
 
 #[cfg(test)]
@@ -246,5 +347,18 @@ class Bar {
         assert!(output.contains("@pos: (50, 60)"), "Foo's position should be updated");
         // Bar should keep its position
         assert!(output.contains("@pos: (100, 200)"), "Bar's position should be preserved");
+    }
+
+    #[test]
+    fn test_update_node_size() {
+        let input = "class Foo\n";
+        let mut ast = parse_file(input).unwrap();
+        
+        let updated = update_node_size(&mut ast, "Foo", 200, 150);
+        assert!(updated);
+        
+        let output = emit_file(&ast);
+        assert!(output.contains("@width: 200"));
+        assert!(output.contains("@height: 150"));
     }
 }

@@ -22,6 +22,9 @@
   --control-bg-hover: #404040;
   --control-border: #404040;
   --control-text: #d4d4d4;
+
+  /* Accents */
+  --accent: #3b82f6; /* blue-500 */
 }
 
 /* Light theme */
@@ -40,4 +43,7 @@
   --control-bg-hover: #e5e5e5;
   --control-border: #d4d4d4;
   --control-text: #171717;
+
+  /* Accents */
+  --accent: #3b82f6; /* blue-500 */
 }

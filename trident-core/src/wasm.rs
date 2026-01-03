@@ -30,6 +30,7 @@ pub fn compile_diagram(input: &str) -> String {
                 groups: vec![],
                 nodes: vec![],
                 edges: vec![],
+                implicit_nodes: vec![],
                 error: Some(ErrorInfo {
                     message: e.msg.clone(),
                     line: e.line,
@@ -49,6 +50,7 @@ pub fn compile_diagram(input: &str) -> String {
                 groups: vec![],
                 nodes: vec![],
                 edges: vec![],
+                implicit_nodes: vec![],
                 error: Some(ErrorInfo {
                     message: e.msg.clone(),
                     line: e.line,
@@ -91,6 +93,7 @@ pub fn compile_diagram(input: &str) -> String {
             bounds,
             has_pos: n.pos.is_some(),
             parent_offset: parent_world,
+            explicit: n.explicit,
         }
     }).collect();
     
@@ -106,29 +109,18 @@ pub fn compile_diagram(input: &str) -> String {
         }
     }).collect();
     
-    let output = DiagramOutput { groups, nodes, edges, error: None };
+    // Collect implicit node IDs for editor diagnostics
+    let implicit_nodes: Vec<String> = diagram.nodes.iter()
+        .filter(|n| !n.explicit)
+        .map(|n| n.id.0.clone())
+        .collect();
+    
+    let output = DiagramOutput { groups, nodes, edges, implicit_nodes, error: None };
     to_string(&output).unwrap()
 }
 
-/// Update a node position and return the new source code
-#[wasm_bindgen]
-pub fn update_class_pos(source: &str, class_id: &str, x: i32, y: i32) -> String {
-    let mut ast = match parser::parse_file(source) {
-        Ok(ast) => ast,
-        Err(e) => {
-            console_error(&format!("Error parsing file: {:?}", e));
-            return source.to_string();
-        }
-    };
-    
-    let new_pos = PointI { x, y };
-    if parser::update_node_position(&mut ast, class_id, new_pos) {
-        parser::emit_file(&ast)
-    } else {
-        console_error(&format!("Node '{}' not found", class_id));
-        source.to_string()
-    }
-}
+
+
 
 /// Update a group position and return the new source code.
 /// For named groups: pass the group_id.
@@ -154,9 +146,10 @@ pub fn update_group_pos(source: &str, group_id: &str, group_index: usize, x: i32
     }
 }
 
-/// Remove a node position (unlock it for auto-layout) and return the new source code
+/// Update a node's geometry (position and size) and return the new source code.
+/// Pass -1 for width/height to indicate "no change" (dont update/don't add).
 #[wasm_bindgen]
-pub fn remove_class_pos(source: &str, class_id: &str) -> String {
+pub fn update_class_geometry(source: &str, class_id: &str, x: i32, y: i32, width: i32, height: i32) -> String {
     let mut ast = match parser::parse_file(source) {
         Ok(ast) => ast,
         Err(e) => {
@@ -165,7 +158,10 @@ pub fn remove_class_pos(source: &str, class_id: &str) -> String {
         }
     };
     
-    if parser::remove_node_position(&mut ast, class_id) {
+    let w_opt = if width < 0 { None } else { Some(width) };
+    let h_opt = if height < 0 { None } else { Some(height) };
+
+    if parser::update_node_geometry(&mut ast, class_id, x, y, w_opt, h_opt) {
         parser::emit_file(&ast)
     } else {
         console_error(&format!("Node '{}' not found", class_id));
@@ -186,6 +182,47 @@ pub fn remove_all_pos(source: &str) -> String {
     
     parser::remove_all_positions(&mut ast);
     parser::emit_file(&ast)
+}
+
+/// Remove a specific node's position (unlock it)
+#[wasm_bindgen]
+pub fn remove_class_pos(source: &str, node_id: &str) -> String {
+    let mut ast = match parser::parse_file(source) {
+        Ok(ast) => ast,
+        Err(e) => {
+            console_error(&format!("Error parsing file: {:?}", e));
+            return source.to_string();
+        }
+    };
+    
+    if parser::remove_node_position(&mut ast, node_id) {
+        parser::emit_file(&ast)
+    } else {
+        console_error(&format!("Node '{}' not found", node_id));
+        source.to_string()
+    }
+}
+
+/// Insert a node declaration for an implicit node (created from a relation).
+/// This is used when starting to drag an implicit node to make it explicit.
+/// Returns the updated source code.
+#[wasm_bindgen]
+pub fn insert_implicit_node(source: &str, node_id: &str, x: i32, y: i32) -> String {
+    let mut ast = match parser::parse_file(source) {
+        Ok(ast) => ast,
+        Err(e) => {
+            console_error(&format!("Error parsing file: {:?}", e));
+            return source.to_string();
+        }
+    };
+    
+    let pos = PointI { x, y };
+    if parser::insert_implicit_node(&mut ast, node_id, pos) {
+        parser::emit_file(&ast)
+    } else {
+        // Node already exists, nothing to do
+        source.to_string()
+    }
 }
 
 /// Rename a symbol (node ID or group ID) and return the updated source code.
@@ -210,17 +247,61 @@ pub fn rename_symbol(source: &str, old_name: &str, new_name: &str) -> String {
 
 /// Get all defined symbols (node IDs and group IDs) in the source.
 /// Returns a JSON array of strings.
+/// NOTE: This tries to parse the source and extract symbols even if there are errors.
 #[wasm_bindgen]
 pub fn get_symbols(source: &str) -> String {
-    let ast = match parser::parse_file(source) {
-        Ok(ast) => ast,
-        Err(_) => {
-            // Return empty array on parse error
-            return "[]".to_string();
+    // Try parsing - if it fails, try a line-by-line fallback
+    match parser::parse_file(source) {
+        Ok(ast) => {
+            let symbols = parser::collect_symbols(&ast);
+            serde_json::to_string(&symbols).unwrap_or_else(|_| "[]".to_string())
         }
-    };
-    
-    let symbols = parser::collect_symbols(&ast);
-    serde_json::to_string(&symbols).unwrap_or_else(|_| "[]".to_string())
+        Err(_) => {
+            // Fallback: extract identifiers from node/class declarations using regex-like matching
+            // This is a simple heuristic to get symbols even when parse fails
+            let mut symbols: Vec<String> = Vec::new();
+            for line in source.lines() {
+                let trimmed = line.trim();
+                // Skip comments and empty lines
+                if trimmed.is_empty() || trimmed.starts_with("%%") {
+                    continue;
+                }
+                // Look for node declarations: [modifiers] <kind> <identifier>
+                let words: Vec<&str> = trimmed.split_whitespace().collect();
+                if words.len() >= 2 {
+                    // Check if any word is a node kind keyword
+                    let kinds = ["class", "interface", "enum", "struct", "record", "trait", 
+                                 "object", "node", "rectangle", "circle", "diamond"];
+                    for (i, word) in words.iter().enumerate() {
+                        if kinds.contains(word) && i + 1 < words.len() {
+                            // Next word is the identifier (strip any trailing characters)
+                            let id = words[i + 1]
+                                .chars()
+                                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                                .collect::<String>();
+                            if !id.is_empty() && !symbols.contains(&id) {
+                                symbols.push(id);
+                            }
+                            break;
+                        }
+                    }
+                    // Check for group: group <identifier> { or group {
+                    if words[0] == "group" && words.len() >= 2 {
+                        let potential_id = words[1];
+                        if potential_id != "{" {
+                            let id = potential_id
+                                .chars()
+                                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                                .collect::<String>();
+                            if !id.is_empty() && !symbols.contains(&id) {
+                                symbols.push(id);
+                            }
+                        }
+                    }
+                }
+            }
+            serde_json::to_string(&symbols).unwrap_or_else(|_| "[]".to_string())
+        }
+    }
 }
 

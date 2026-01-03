@@ -49,16 +49,22 @@ pub struct Group {
 #[derive(Debug, Clone, Serialize)]
 pub struct Node {
     pub nid: NodeId,
-    /// Node kind: "class", "interface", "enum", etc.
+    /// Node kind: "class" or "node"
     pub kind: String,
-    /// Modifiers: "abstract", "static", etc.
+    /// Modifiers: "abstract", "interface", "enum", "rectangle", "circle", "diamond", etc.
     pub modifiers: Vec<String>,
     /// Unique identifier
     pub id: Ident,
     pub label: Option<String>,
     pub group: GroupId,
     pub pos: Option<PointI>, // local to group
+    /// Custom width (from @width directive)
+    pub width: Option<i32>,
+    /// Custom height (from @height directive)
+    pub height: Option<i32>,
     pub body_lines: Vec<String>,
+    /// Whether this node was explicitly declared (false for implicit nodes)
+    pub explicit: bool,
     /// Stable traversal order index.
     pub order: usize,
 }
@@ -182,7 +188,10 @@ impl CompileCtx {
         label: Option<String>,
         group: GroupId,
         pos: Option<PointI>,
+        width: Option<i32>,
+        height: Option<i32>,
         body_lines: Vec<String>,
+        explicit: bool,
     ) -> NodeId {
         let nid = NodeId(self.nodes.len());
         let order = self.alloc_order();
@@ -194,7 +203,10 @@ impl CompileCtx {
             label,
             group,
             pos,
+            width,
+            height,
             body_lines,
+            explicit,
             order,
         });
         nid
@@ -241,23 +253,61 @@ impl CompileCtx {
     }
 
     fn compile_node(&mut self, n: &NodeAst, parent_gid: GroupId) -> Result<(), CompileError> {
-        // Uniqueness check for nodes
-        if self.node_by_ident.contains_key(&n.id) {
-            return Err(CompileError {
-                msg: format!("duplicate node identifier: {}", n.id.0),
-                line: n.span.map(|s| s.start_line).unwrap_or(1),
-                col: 1,
-            });
+        // Build modifiers: include original_kind if it differs from kind
+        // (e.g., "enum" for class, "circle" for node)
+        let mut modifiers = n.modifiers.clone();
+        if n.original_kind != n.kind {
+            modifiers.push(n.original_kind.clone());
+        }
+        
+        // Check if node already exists (could be implicit from a relation)
+        if let Some(&existing_nid) = self.node_by_ident.get(&n.id) {
+            let existing = &mut self.nodes[existing_nid.0];
+            if existing.explicit {
+                // Already explicitly declared - duplicate error
+                return Err(CompileError {
+                    msg: format!("duplicate node identifier: {}", n.id.0),
+                    line: n.span.map(|s| s.start_line).unwrap_or(1),
+                    col: 1,
+                });
+            }
+            
+            // Upgrade implicit node to explicit
+            existing.kind = n.kind.clone();
+            existing.modifiers = modifiers;
+            existing.label = n.label.clone();
+            existing.width = n.width;
+            existing.height = n.height;
+            existing.body_lines = n.body_lines.clone();
+            existing.explicit = true;
+            if n.pos.is_some() {
+                existing.pos = n.pos;
+            }
+            
+            // Update group membership if needed
+            if existing.group != parent_gid {
+                // Remove from old group
+                let old_group = &mut self.groups[existing.group.0];
+                old_group.children_nodes.retain(|&nid| nid != existing_nid);
+                // Add to new group
+                existing.group = parent_gid;
+                self.groups[parent_gid.0].children_nodes.push(existing_nid);
+            }
+            
+            return Ok(());
         }
 
         let nid = self.new_node(
             n.kind.clone(),
-            n.modifiers.clone(),
+            modifiers,
             n.id.clone(),
             n.label.clone(),
             parent_gid,
             n.pos,
+            n.width,
+            n.height,
             n.body_lines.clone(),
+            true, // explicit
         );
 
         self.node_by_ident.insert(n.id.clone(), nid);
@@ -281,18 +331,38 @@ impl CompileCtx {
         Ok(())
     }
 
+    /// Get an existing node by identifier, or create an implicit one.
+    fn get_or_create_implicit_node(&mut self, id: &Ident) -> NodeId {
+        if let Some(&nid) = self.node_by_ident.get(id) {
+            return nid;
+        }
+        
+        // Create implicit node in root group (GroupId(0))
+        let nid = self.new_node(
+            "node".to_string(),
+            vec!["rectangle".to_string()],
+            id.clone(),
+            None,
+            GroupId(0),
+            None,
+            None,
+            None,
+            Vec::new(),
+            false, // implicit
+        );
+        self.node_by_ident.insert(id.clone(), nid);
+        self.groups[0].children_nodes.push(nid);
+        nid
+    }
+
     fn resolve_edges(&mut self) -> Result<(), CompileError> {
-        for pe in self.pending_edges.drain(..) {
-            let from = self.node_by_ident.get(&pe.from).copied().ok_or_else(|| CompileError {
-                msg: format!("edge references unknown node '{}' (from)", pe.from.0),
-                line: pe.line,
-                col: 1,
-            })?;
-            let to = self.node_by_ident.get(&pe.to).copied().ok_or_else(|| CompileError {
-                msg: format!("edge references unknown node '{}' (to)", pe.to.0),
-                line: pe.line,
-                col: 1,
-            })?;
+        // Collect pending edges (drain to avoid borrow issues)
+        let pending: Vec<_> = self.pending_edges.drain(..).collect();
+        
+        for pe in pending {
+            // Create implicit nodes if needed
+            let from = self.get_or_create_implicit_node(&pe.from);
+            let to = self.get_or_create_implicit_node(&pe.to);
 
             self.edges.push(Edge {
                 from,
@@ -303,7 +373,6 @@ impl CompileCtx {
             });
         }
 
-        // Keep edges deterministic: they are already in compilation order
         Ok(())
     }
 }

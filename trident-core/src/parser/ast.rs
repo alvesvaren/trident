@@ -242,18 +242,29 @@ impl<'a> Parser<'a> {
             return Ok(None);
         }
         
-        // Check if the second-to-last word (or any early word) is a known node kind
         // The last word is always the identifier
-        // Pattern: [modifier...] <kind> <id>
+        let id_str = words.pop().unwrap();
         
-        let id_str = words.pop().unwrap(); // Last word is the identifier
-        
-        // Find the node kind - it's the last word that matches a known kind
-        // Everything before it is modifiers
+        // Find the node kind - check in order: known kinds, class keywords, node keywords
+        // Everything before the kind is modifiers
         let mut kind_idx = None;
+        let mut mapped_kind: Option<&str> = None;
+        
         for (i, word) in words.iter().enumerate().rev() {
             if is_node_kind(word) {
                 kind_idx = Some(i);
+                break;
+            }
+            if class_keyword(word).is_some() {
+                // e.g., "enum Foo" -> kind="class", original_kind="enum"
+                kind_idx = Some(i);
+                mapped_kind = Some("class");
+                break;
+            }
+            if node_keyword(word).is_some() {
+                // e.g., "diamond A" -> kind="node", original_kind="diamond"
+                kind_idx = Some(i);
+                mapped_kind = Some("node");
                 break;
             }
         }
@@ -263,12 +274,18 @@ impl<'a> Parser<'a> {
             None => return Ok(None), // No known node kind found
         };
         
+        // Preserve the original keyword as written by the user
+        let original_kind = words[kind_idx].to_string();
+        
+        // Build modifiers from words before kind_idx (not including the kind-mapped modifier)
         let modifiers: Vec<String> = words[..kind_idx].iter().map(|s| s.to_string()).collect();
-        let kind = words[kind_idx].to_string();
+        
+        // Determine final kind
+        let kind = mapped_kind.unwrap_or(words[kind_idx]).to_string();
         let id = Ident(id_str.to_string());
         
         // Parse rest of line
-        self.parse_node_with_parts(modifiers, kind, id, rest)
+        self.parse_node_with_parts(modifiers, kind, original_kind, id, rest)
     }
     
     /// Parse node after modifiers/kind/id are known
@@ -276,6 +293,7 @@ impl<'a> Parser<'a> {
         &mut self,
         modifiers: Vec<String>,
         kind: String,
+        original_kind: String,
         id: Ident,
         mut rest: &str,
     ) -> Result<Option<NodeAst>, ParseError> {
@@ -318,16 +336,21 @@ impl<'a> Parser<'a> {
             // Single-line node declaration
             return Ok(Some(NodeAst {
                 kind,
+                original_kind,
                 modifiers,
                 id,
                 label,
                 pos: None,
+                width: None,
+                height: None,
                 body_lines: Vec::new(),
                 span: Some(Span { start_line, end_line: start_line }),
             }));
         }
 
         let mut pos: Option<PointI> = None;
+        let mut width: Option<i32> = None;
+        let mut height: Option<i32> = None;
         let mut body_lines: Vec<String> = Vec::new();
 
         loop {
@@ -345,10 +368,13 @@ impl<'a> Parser<'a> {
                 self.advance();
                 return Ok(Some(NodeAst {
                     kind,
+                    original_kind,
                     modifiers,
                     id,
                     label,
                     pos,
+                    width,
+                    height,
                     body_lines,
                     span: Some(Span { start_line, end_line }),
                 }));
@@ -359,6 +385,32 @@ impl<'a> Parser<'a> {
                     return self.err(1, "duplicate @pos in node block");
                 }
                 pos = Some(parse_pos_line(t).map_err(|msg| ParseError {
+                    line: self.line_no(),
+                    col: 1,
+                    msg,
+                })?);
+                self.advance();
+                continue;
+            }
+
+            if t.starts_with("@width:") {
+                if width.is_some() {
+                    return self.err(1, "duplicate @width in node block");
+                }
+                width = Some(parse_int_directive(t, "@width:").map_err(|msg| ParseError {
+                    line: self.line_no(),
+                    col: 1,
+                    msg,
+                })?);
+                self.advance();
+                continue;
+            }
+
+            if t.starts_with("@height:") {
+                if height.is_some() {
+                    return self.err(1, "duplicate @height in node block");
+                }
+                height = Some(parse_int_directive(t, "@height:").map_err(|msg| ParseError {
                     line: self.line_no(),
                     col: 1,
                     msg,
@@ -623,6 +675,16 @@ fn parse_pos_line(t: &str) -> Result<PointI, String> {
     Ok(PointI { x, y })
 }
 
+/// Parse an integer directive like @width: 100 or @height: 60
+fn parse_int_directive(line: &str, prefix: &str) -> Result<i32, String> {
+    let rest = line
+        .strip_prefix(prefix)
+        .ok_or_else(|| format!("expected '{}'", prefix))?;
+    rest.trim()
+        .parse::<i32>()
+        .map_err(|_| format!("{} must be an integer", prefix))
+}
+
 /// Parses relations with or without spaces.
 /// Returns (from, arrow_canonical_name, to)
 /// Accepts:
@@ -702,7 +764,8 @@ mod tests {
         assert_eq!(ast.items.len(), 1);
         match &ast.items[0] {
             Stmt::Node(n) => {
-                assert_eq!(n.kind, "interface");
+                assert_eq!(n.kind, "class"); // Maps to class kind
+                assert_eq!(n.original_kind, "interface"); // Preserves original keyword
                 assert_eq!(n.id.0, "Baz");
             }
             _ => panic!("Expected Node"),
@@ -716,9 +779,10 @@ mod tests {
         assert_eq!(ast.items.len(), 1);
         match &ast.items[0] {
             Stmt::Node(n) => {
-                assert_eq!(n.kind, "enum");
+                assert_eq!(n.kind, "class"); // Maps to class kind
+                assert_eq!(n.original_kind, "enum"); // Preserves original keyword
                 assert_eq!(n.id.0, "Status");
-                assert_eq!(n.modifiers, vec!["public", "sealed"]);
+                assert_eq!(n.modifiers, vec!["public", "sealed"]); // Modifiers before keyword
             }
             _ => panic!("Expected Node"),
         }

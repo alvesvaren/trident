@@ -5,6 +5,7 @@ import * as trident_core from "trident-core";
 import type { DiagramOutput } from "../../types/diagram";
 import { useDiagramDrag } from "../../hooks/useDiagramDrag";
 import { SVGNode } from "./SVGNode";
+import { SVGShapeNode } from "./SVGShapeNode";
 import { SVGGroup } from "./SVGGroup";
 import { EdgeDefs, SVGEdges } from "./SVGEdges";
 import type { CodeEditorRef } from "../editor/CodeEditor";
@@ -198,7 +199,7 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { resolvedTheme, setTheme } = useTheme();
-  const { dragState, dragResult, scaleRef, startNodeDrag, startGroupDrag } = useDiagramDrag({ code, onCodeChange, editorRef });
+  const { dragState, dragResult, scaleRef, startNodeDrag, startGroupDrag, startNodeResize } = useDiagramDrag({ code, onCodeChange, editorRef });
 
   const toggleTheme = useCallback(() => {
     setTheme(resolvedTheme === "dark" ? "light" : "dark");
@@ -460,14 +461,18 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
               const x = isDragging ? dragState!.currentX : node.bounds.x;
               const y = isDragging ? dragState!.currentY : node.bounds.y;
 
+              // Dispatch to SVGNode (class kind) or SVGShapeNode (node kind)
+              const NodeComponent = node.kind === "node" ? SVGShapeNode : SVGNode;
+
               return (
-                <SVGNode
+                <NodeComponent
                   key={node.id}
                   node={node}
                   x={x}
                   y={y}
                   onMouseDown={e => startNodeDrag(e as unknown as React.MouseEvent, node)}
                   onUnlock={e => handleUnlock(node.id, e as unknown as React.MouseEvent)}
+                  onResizeStart={startNodeResize}
                 />
               );
             })}

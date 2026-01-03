@@ -1,5 +1,5 @@
 mod ast;
-mod compile;
+pub mod compile;
 mod codegen;
 mod update;
 mod types;
@@ -12,7 +12,10 @@ pub use update::{
     update_node_position,
     update_group_position,
     remove_node_position,
-    remove_all_positions
+    remove_all_positions,
+    insert_implicit_node,
+    update_node_size,
+    update_node_geometry,
 };
 pub use types::*;
 pub use compile::{Diagram, GroupId, NodeId, Group, Node, Edge};
