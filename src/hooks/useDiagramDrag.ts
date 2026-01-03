@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import * as trident_core from "trident-core";
-import type { DiagramNode, DiagramGroup, DragState, DiagramOutput } from "../types/diagram";
+import type { DiagramNode, DiagramGroup, DragState } from "../types/diagram";
 import type { CodeEditorRef } from "../components/editor/CodeEditor";
 
 const DRAG_THROTTLE_MS = 10;
@@ -14,8 +14,6 @@ interface UseDiagramDragOptions {
 
 interface UseDiagramDragResult {
   dragState: DragState | null;
-  /** Layout result computed during drag (use this when dragState is not null) */
-  dragResult: DiagramOutput | null;
   scaleRef: React.MutableRefObject<number>;
   startNodeDrag: (e: React.MouseEvent, node: DiagramNode) => void;
   startGroupDrag: (e: React.MouseEvent, group: DiagramGroup, index: number) => void;
@@ -24,36 +22,21 @@ interface UseDiagramDragResult {
 
 export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDragOptions): UseDiagramDragResult {
   const [dragState, setDragState] = useState<DragState | null>(null);
-  // Layout result computed during drag (to avoid updating React code state)
-  const [dragResult, setDragResult] = useState<DiagramOutput | null>(null);
   const scaleRef = useRef<number>(1);
   const codeRef = useRef(code);
   codeRef.current = code;
   // Track the current code during drag (separate from React state)
   const dragCodeRef = useRef<string | null>(null);
   const lastLayoutUpdateRef = useRef<number>(0);
-  const lastUpdateRef = useRef<{ x: number; y: number } | null>(null);
   // Track if we've made any updates during this drag (to know if we need undo stop)
   const hasUpdatedRef = useRef(false);
-  // Track pending code that we're waiting to be applied (to prevent flicker on release)
-  const pendingCodeRef = useRef<string | null>(null);
-
-  // Clear dragResult once the parent code has been updated to match our pending code
-  useEffect(() => {
-    if (pendingCodeRef.current && code === pendingCodeRef.current) {
-      pendingCodeRef.current = null;
-      setDragResult(null);
-    }
-  }, [code]);
 
   const startNodeDrag = useCallback(
     (e: React.MouseEvent, node: DiagramNode) => {
       e.preventDefault();
       e.stopPropagation();
       hasUpdatedRef.current = false;
-      // Use pendingCodeRef if available (handles race condition when starting new drag
-      // before React state has updated from previous drag)
-      let sourceCode = pendingCodeRef.current ?? codeRef.current;
+      let sourceCode = codeRef.current;
 
       // If node is implicit, insert a declaration first
       if (!node.explicit) {
@@ -89,7 +72,7 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
       e.preventDefault();
       e.stopPropagation();
       hasUpdatedRef.current = false;
-      dragCodeRef.current = pendingCodeRef.current ?? codeRef.current;
+      dragCodeRef.current = codeRef.current;
 
       // If node is implicit, we should probably insert it, but for now duplicate the logic or assume it exists
       // (Resizing implicit nodes might be edge case, but safe to assume standard flow)
@@ -122,9 +105,7 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
       e.preventDefault();
       e.stopPropagation();
       hasUpdatedRef.current = false;
-      // Use pendingCodeRef if available (handles race condition when starting new drag
-      // before React state has updated from previous drag)
-      dragCodeRef.current = pendingCodeRef.current ?? codeRef.current;
+      dragCodeRef.current = codeRef.current;
       // Push undo stop before starting drag to mark the "before" state
       editorRef?.current?.pushUndoStop();
       setDragState({
@@ -245,14 +226,11 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
         dragCodeRef.current = newCode;
 
         if (isFinal) {
-          const jsonResult = trident_core.compile_diagram(newCode);
-          setDragResult(JSON.parse(jsonResult));
-          pendingCodeRef.current = newCode;
+          // Commit the final code change - App.tsx's useMemo will recompile
           onCodeChange(newCode);
         } else if (editorRef?.current) {
+          // Silent update during drag - editor shows changes but no React state update
           editorRef.current.silentSetValue(newCode);
-          const jsonResult = trident_core.compile_diagram(newCode);
-          setDragResult(JSON.parse(jsonResult));
         }
       }
     };
@@ -364,7 +342,6 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
           editorRef.current.pushUndoStop();
         }
 
-        lastUpdateRef.current = null;
         lastLayoutUpdateRef.current = 0;
         dragCodeRef.current = null;
 
@@ -383,7 +360,6 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
 
   return {
     dragState,
-    dragResult,
     scaleRef,
     startNodeDrag,
     startGroupDrag,

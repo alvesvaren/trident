@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import * as trident_core from "trident-core";
 import type { DiagramOutput } from "./types/diagram";
 import { SplitPane } from "./components/layout/SplitPane";
@@ -10,19 +10,16 @@ const STORAGE_KEY = "trident-editor-code";
 
 function App() {
   const [code, setCode] = useState(() => localStorage.getItem(STORAGE_KEY) ?? "");
-  const [result, setResult] = useState<DiagramOutput>({});
   const editorRef = useRef<CodeEditorRef | null>(null);
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, code);
+  // Derive diagram from code - single source of truth
+  const result = useMemo<DiagramOutput>(() => {
+    const jsonResult = trident_core.compile_diagram(code);
+    return JSON.parse(jsonResult);
   }, [code]);
 
   useEffect(() => {
-    const start = performance.now();
-    const jsonResult = trident_core.compile_diagram(code);
-    setResult(JSON.parse(jsonResult));
-    const end = performance.now();
-    console.log(`Time taken to parse: ${end - start} milliseconds`);
+    localStorage.setItem(STORAGE_KEY, code);
   }, [code]);
 
   return (

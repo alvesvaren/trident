@@ -199,7 +199,7 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { resolvedTheme, setTheme } = useTheme();
-  const { dragState, dragResult, scaleRef, startNodeDrag, startGroupDrag, startNodeResize } = useDiagramDrag({ code, onCodeChange, editorRef });
+  const { dragState, scaleRef, startNodeDrag, startGroupDrag, startNodeResize } = useDiagramDrag({ code, onCodeChange, editorRef });
 
   const toggleTheme = useCallback(() => {
     setTheme(resolvedTheme === "dark" ? "light" : "dark");
@@ -208,13 +208,10 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
   // Get the current background color for exports
   const exportBgColor = resolvedTheme === "dark" ? "#171717" : "#f5f5f5";
 
-  // Use dragResult during drag (computed locally), otherwise use the prop result
-  const displayResult = dragResult ?? result;
-
   // Calculate SVG viewport with support for negative coordinates
   const svgViewport = useMemo(() => {
-    const nodes = displayResult.nodes ?? [];
-    const groups = displayResult.groups ?? [];
+    const nodes = result.nodes ?? [];
+    const groups = result.groups ?? [];
 
     if (nodes.length === 0 && groups.length === 0) {
       return { x: 0, y: 0, width: 800, height: 600 };
@@ -247,7 +244,7 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
       width: maxX - minX + padding * 2,
       height: maxY - minY + padding * 2,
     };
-  }, [displayResult.nodes, displayResult.groups]);
+  }, [result.nodes, result.groups]);
 
   // Global keyboard shortcuts for undo/redo (works in fullscreen mode)
   useEffect(() => {
@@ -437,14 +434,14 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
               <EdgeDefs />
             </defs>
 
-            {displayResult.error && (
+            {result.error && (
               <text x={50} y={50} fill='#ef4444' fontSize={14}>
-                {displayResult.error.message}
+                {result.error.message}
               </text>
             )}
 
             {/* Groups (background layer) */}
-            {displayResult.groups?.map((group, index) => {
+            {result.groups?.map((group, index) => {
               const isDragging = dragState?.type === "group" && dragState.id === group.id;
               const x = isDragging ? dragState!.currentX : group.bounds.x;
               const y = isDragging ? dragState!.currentY : group.bounds.y;
@@ -453,10 +450,10 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
             })}
 
             {/* Edges (middle layer) */}
-            {displayResult.nodes && displayResult.edges && <SVGEdges edges={displayResult.edges} nodes={displayResult.nodes} dragState={dragState} />}
+            {result.nodes && result.edges && <SVGEdges edges={result.edges} nodes={result.nodes} dragState={dragState} />}
 
             {/* Nodes (top layer) */}
-            {displayResult.nodes?.map(node => {
+            {result.nodes?.map(node => {
               const isDragging = dragState?.type === "node" && dragState.id === node.id;
               const x = isDragging ? dragState!.currentX : node.bounds.x;
               const y = isDragging ? dragState!.currentY : node.bounds.y;
