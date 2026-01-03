@@ -31,6 +31,32 @@ pub fn update_group_position(
     )
 }
 
+/// Update the size of a node by ID.
+/// Returns true if the node was found and updated.
+pub fn update_node_size(ast: &mut FileAst, node_id: &str, width: i32, height: i32) -> bool {
+    find_and_update_node_size(&mut ast.items, node_id, width, height)
+}
+
+/// Recursively search for a node by ID and update its size
+fn find_and_update_node_size(items: &mut [Stmt], node_id: &str, width: i32, height: i32) -> bool {
+    for stmt in items {
+        match stmt {
+            Stmt::Node(n) if n.id.0 == node_id => {
+                n.width = Some(width);
+                n.height = Some(height);
+                return true;
+            }
+            Stmt::Group(g) => {
+                if find_and_update_node_size(&mut g.items, node_id, width, height) {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
 /// Recursively search for a node by ID and update its position
 fn find_and_update_node(items: &mut [Stmt], node_id: &str, new_pos: PointI) -> bool {
     for stmt in items {
@@ -290,5 +316,18 @@ class Bar {
         assert!(output.contains("@pos: (50, 60)"), "Foo's position should be updated");
         // Bar should keep its position
         assert!(output.contains("@pos: (100, 200)"), "Bar's position should be preserved");
+    }
+
+    #[test]
+    fn test_update_node_size() {
+        let input = "class Foo\n";
+        let mut ast = parse_file(input).unwrap();
+        
+        let updated = update_node_size(&mut ast, "Foo", 200, 150);
+        assert!(updated);
+        
+        let output = emit_file(&ast);
+        assert!(output.contains("@width: 200"));
+        assert!(output.contains("@height: 150"));
     }
 }

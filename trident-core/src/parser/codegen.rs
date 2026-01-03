@@ -107,14 +107,26 @@ fn emit_node(n: &NodeAst, indent: usize, out: &mut String) {
         header.push_str(&format!(" \"{}\"", label));
     }
     
-    // If node has pos or body_lines, emit with block
-    if n.pos.is_some() || !n.body_lines.is_empty() {
+    // If node has pos, width, height, or body_lines, emit with block
+    if n.pos.is_some() || n.width.is_some() || n.height.is_some() || !n.body_lines.is_empty() {
         out.push_str(&header);
         out.push_str(" {\n");
         
         // @pos if present
         if let Some(pos) = &n.pos {
             emit_pos(pos, indent + 1, out);
+        }
+
+        // @width if present
+        if let Some(w) = n.width {
+            let ind = indent_str(indent + 1);
+            out.push_str(&format!("{}@width: {}\n", ind, w));
+        }
+
+        // @height if present
+        if let Some(h) = n.height {
+            let ind = indent_str(indent + 1);
+            out.push_str(&format!("{}@height: {}\n", ind, h));
         }
         
         // Body lines
