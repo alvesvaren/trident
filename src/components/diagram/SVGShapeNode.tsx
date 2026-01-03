@@ -1,5 +1,7 @@
 import type { DiagramNode as DiagramNodeType } from "../../types/diagram";
 
+import { getShape } from "../../utils/geometry";
+
 interface SVGShapeNodeProps {
   node: DiagramNodeType;
   x: number;
@@ -8,13 +10,6 @@ interface SVGShapeNodeProps {
   onUnlock: (e: React.MouseEvent<SVGGElement>) => void;
   /** Hide interactive elements for export */
   exportMode?: boolean;
-}
-
-/** Get shape from modifiers (default: rectangle) */
-function getShape(modifiers: string[]): "rectangle" | "circle" | "diamond" {
-  if (modifiers.includes("circle")) return "circle";
-  if (modifiers.includes("diamond")) return "diamond";
-  return "rectangle";
 }
 
 /** SVGShapeNode renders node-kind elements (simple shapes with labels) */
