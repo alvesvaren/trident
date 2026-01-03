@@ -158,6 +158,25 @@ pub fn update_class_size(source: &str, class_id: &str, width: i32, height: i32) 
     }
 }
 
+/// Update a node's geometry (position and size) and return the new source code
+#[wasm_bindgen]
+pub fn update_class_geometry(source: &str, class_id: &str, x: i32, y: i32, width: i32, height: i32) -> String {
+    let mut ast = match parser::parse_file(source) {
+        Ok(ast) => ast,
+        Err(e) => {
+            console_error(&format!("Error parsing file: {:?}", e));
+            return source.to_string();
+        }
+    };
+    
+    if parser::update_node_geometry(&mut ast, class_id, x, y, width, height) {
+        parser::emit_file(&ast)
+    } else {
+        console_error(&format!("Node '{}' not found", class_id));
+        source.to_string()
+    }
+}
+
 /// Update a group position and return the new source code.
 /// For named groups: pass the group_id.
 /// For anonymous groups: pass empty string for group_id and use the group_index.

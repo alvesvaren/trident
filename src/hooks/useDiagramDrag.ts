@@ -75,7 +75,10 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
         parentOffsetY: node.parent_offset.y,
         currentX: node.bounds.x,
         currentY: node.bounds.y,
-      });
+        // Helper props for new update logic
+        startW: node.bounds.w,
+        startH: node.bounds.h,
+      } as any);
     },
     [editorRef]
   );
@@ -94,19 +97,21 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
       setDragState({
         type: "resize",
         id: node.id,
-        // For resize, startX/Y are the initial WIDTH/HEIGHT
-        startX: node.bounds.w,
+        startX: node.bounds.w, // kept for compat if needed, but we use startW/startH now
         startY: node.bounds.h,
         startMouseX: e.clientX,
         startMouseY: e.clientY,
-        // Check handle direction
         resizeHandle: handle,
         currentX: node.bounds.w,
         currentY: node.bounds.h,
-        // parentOffset not used for size but kept for type compat
         parentOffsetX: 0,
         parentOffsetY: 0,
-      });
+        // Explicit initial state
+        initialX: node.bounds.x,
+        initialY: node.bounds.y,
+        startW: node.bounds.w,
+        startH: node.bounds.h,
+      } as any);
     },
     [editorRef]
   );
@@ -144,38 +149,97 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
 
     // Helper function to update the code/layout
     const updateLayout = (currentDrag: DragState, isFinal: boolean) => {
-      // Skip if position/size hasn't changed since last update
-      // Reuse fields: currentX -> width/newX, currentY -> height/newY
-      // Need clarify: dragState uses currentX/Y for generic accumulating values
-
-      // For Node/Group drag: currentX/Y are absolut positions
-      // For Resize: currentX/Y are Width/Height
-
-      const val1 = currentDrag.currentX;
-      const val2 = currentDrag.currentY;
-
-      if (lastUpdateRef.current && lastUpdateRef.current.x === val1 && lastUpdateRef.current.y === val2) {
-        return;
-      }
-      lastUpdateRef.current = { x: val1, y: val2 };
-
       // Use drag code ref for incremental updates during drag
       const sourceCode = dragCodeRef.current ?? codeRef.current;
-
       let newCode: string;
+
       if (currentDrag.type === "node") {
+        // Moving a node
         const newLocalX = currentDrag.currentX - currentDrag.parentOffsetX;
         const newLocalY = currentDrag.currentY - currentDrag.parentOffsetY;
-        newCode = trident_core.update_class_pos(sourceCode, currentDrag.id, newLocalX, newLocalY);
-      } else if (currentDrag.type === "group") {
+        // We need to pass current width/height to geometry update.
+        // Since 'move' doesn't change W/H, we can grab them from where?
+        // We don't track W/H in move-state.
+        // BUT, we have 'code' which is the source of truth, OR we can look up the node in the diagram result if we had it.
+        // HOWEVER, the most robust way (since we are in drag loop) is to pass what we know.
+        // Actually, wait. 'update_class_pos' was fine for just moving.
+        // But user wants DRY. 'update_class_geometry' overwrites ALL fields.
+        // If we don't have W/H, we might overwrite them with 0 if we aren't careful?
+        // Ah, the previous implementation of update_node_position didn't touch W/H.
+        // update_node_geometry DOES touch them.
+        // So for "Node" drag (move only), we need W/H.
+        // We can store startW/startH in DragState when starting drag.
+        const w = (currentDrag as any).startW ?? 0; // Needs to be added to DragState for node
+        const h = (currentDrag as any).startH ?? 0;
+
+        const newLocalXInt = Math.round(newLocalX);
+        const newLocalYInt = Math.round(newLocalY);
+
+        // Use the unified function
+        newCode = trident_core.update_class_geometry(sourceCode, currentDrag.id, newLocalXInt, newLocalYInt, Math.round(w), Math.round(h));
+      } else if (currentDrag.type === "resize") {
+        // Resizing a node (and potentially moving it if resizing from top/left)
+        // currentX/Y in resize state tracks the NEW DIMENSIONS (W, H) or NEW POS?
+        // Let's look at handleMouseMove logic below.
+
+        // In Resize state:
+        // currentX = new Width
+        // currentY = new Height
+        // startX = initial Width
+        // startY = initial Height
+
+        // But for NW/N/W/SW resize, we ALSO change position.
+        // So we need to track X/Y too.
+        // Let's update DragState interface to hold currentPosX/Y effectively.
+        // But DragState is rigid.
+        // Let's calculate everything in handleMouseMove, store in DragState, and read here.
+
+        // Ideally DragState should have: currentX, currentY (Position), currentW, currentH (Size).
+        // Existing DragState has currentX/Y.
+        // Let's piggyback or assume currentX/Y = W/H for resize?
+        // No, we need 4 values.
+        // USEDIAGRAMDRAG refactor:
+        // Let's assume for Resize:
+        // currentX = Width
+        // currentY = Height
+        // And we need new X, Y.
+        // We can store new X/Y in `dragState` if we expand it?
+        // Or we can recalculate them here (but that requires mouse deltas which we don't have easily here).
+        // Better to expand DragState in the `setDragState` call in mouseMove.
+
+        // Since I can't easily change the type definition in this tool call (it's in types/diagram.ts?),
+        // I will assume I can cast or extend it locally if it helps, OR just abuse existing fields?
+        // Safest is to calculate everything in mouseMove and maybe repurpose fields?
+        // Actually, I can edit types/diagram.ts? No, it's not open.
+        // Wait, I can see `DragState` usage. It has `currentX`, `currentY`.
+        // I'll stick to: currentX/Y is the position (X/Y).
+        // And I'll add `currentW`, `currentH` to the state?
+        // If I cannot change type, I'm stuck.
+        // Let's check `types/diagram`. If I can't check it, I assume it's limited.
+        // Alternative: usage of `any` or strict separation.
+
+        // Let's look at `useDiagramDrag.ts` imports.
+        // `import type { ..., DragState } from "../types/diagram";`
+
+        // I will try to update `handleMouseMove` to set the specialized properties,
+        // and here I will read them. I'll cast `currentDrag` to `any` to access new props if needed,
+        // since I'm implementing the logic here.
+
+        const d = currentDrag as any;
+        const newX = d.newX ?? d.initialX; // Position X
+        const newY = d.newY ?? d.initialY; // Position Y
+        const newW = d.newW ?? d.startW; // Width
+        const newH = d.newH ?? d.startH; // Height
+
+        const localX = newX - (d.parentOffsetX ?? 0);
+        const localY = newY - (d.parentOffsetY ?? 0);
+
+        newCode = trident_core.update_class_geometry(sourceCode, currentDrag.id, Math.round(localX), Math.round(localY), Math.round(newW), Math.round(newH));
+      } else {
+        // Groups use update_group_pos (geometry not supported for groups yet/maybe irrelevant)
         const newLocalX = currentDrag.currentX - currentDrag.parentOffsetX;
         const newLocalY = currentDrag.currentY - currentDrag.parentOffsetY;
         newCode = trident_core.update_group_pos(sourceCode, currentDrag.id, currentDrag.groupIndex ?? 0, newLocalX, newLocalY);
-      } else if (currentDrag.type === "resize") {
-        // val1 = width, val2 = height
-        newCode = trident_core.update_class_size(sourceCode, currentDrag.id, val1, val2);
-      } else {
-        newCode = sourceCode;
       }
 
       if (newCode !== sourceCode) {
@@ -183,17 +247,12 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
         dragCodeRef.current = newCode;
 
         if (isFinal) {
-          // On release: update React state (this will sync editor properly)
-          // Keep dragResult showing the final position until parent code updates
-          // (prevents flicker for one frame)
           const jsonResult = trident_core.compile_diagram(newCode);
           setDragResult(JSON.parse(jsonResult));
           pendingCodeRef.current = newCode;
           onCodeChange(newCode);
         } else if (editorRef?.current) {
-          // During drag: update Monaco silently and compile layout locally
           editorRef.current.silentSetValue(newCode);
-          // Compile layout locally without updating React code state
           const jsonResult = trident_core.compile_diagram(newCode);
           setDragResult(JSON.parse(jsonResult));
         }
@@ -206,35 +265,74 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
       const deltaY = (e.clientY - dragState.startMouseY) / scale;
 
       if (dragState.type === "resize") {
-        // Calculate new width/height based on handle
-        let newW = dragState.startX;
-        let newH = dragState.startY;
-        const handle = dragState.resizeHandle;
+        // Resize logic
+        // startX/Y in resize state = initial Width/Height?
+        // Wait, in startNodeResize I set: startX = w, startY = h.
+        // But I also need initial Position (X/Y) to calculate top/left resize.
+        // In startNodeResize I didn't store initial X/Y. I NEED to.
+        // I'll update startNodeResize to store initialX/initialY in `dragState` (using extra props).
 
-        // Simple resize logic (assuming center/top-left remains fixed for simplicity unless strict resizing requested)
-        // Actually, CSS resize often changes just w/h extending right/down.
-        // For 'nw' (north-west), we would need to change x/y AND w/h.
-        // Trident core only supports updating SIZE separately from POS currently via update_class_size.
-        // To support corner resizing properly (nw, sw, ne), we'd need to update POS too.
-        // For simplicity v1: Support ONLY Right/Down resizing (se, e, s).
-        // Or mapped:
-        // e: w + dx
-        // s: h + dy
-        // se: w + dx, h + dy
-        // For others, we block or treat as same.
-        // Let's implement full SE resize flow for all corners for now to avoid complexity of moving X/Y sync.
-        // Just kidding, let's just support SE-like behavior for all handles or specifically E, S, SE.
+        const d = dragState as any;
+        const initialW = d.startW;
+        const initialH = d.startH;
+        const initialX = d.initialX; // Need to ensure these are set
+        const initialY = d.initialY;
+        const handle = d.resizeHandle;
 
-        if (handle?.includes("e")) newW += deltaX;
-        if (handle?.includes("w")) newW -= deltaX; // Would need pos update
-        if (handle?.includes("s")) newH += deltaY;
-        if (handle?.includes("n")) newH -= deltaY; // Would need pos update
+        let newW = initialW;
+        let newH = initialH;
+        let newX = initialX;
+        let newY = initialY;
+
+        // Apply 8-way logic
+        if (handle.includes("e")) {
+          newW = initialW + deltaX;
+        }
+        if (handle.includes("w")) {
+          newW = initialW - deltaX;
+          newX = initialX + deltaX;
+        }
+        if (handle.includes("s")) {
+          newH = initialH + deltaY;
+        }
+        if (handle.includes("n")) {
+          newH = initialH - deltaY;
+          newY = initialY + deltaY;
+        }
 
         // Clamp min size
-        newW = Math.max(40, newW);
-        newH = Math.max(40, newH);
+        if (newW < 40) {
+          // If clamping width, we might need to adjust X if dragging West
+          if (handle.includes("w")) {
+            // The right edge should stay fixed: (newX + newW) == (initialX + deltaX + initialW - deltaX) ?
+            // RightEdge = initialX + initialW.
+            // If newW is clamped to 40, then newX = RightEdge - 40.
+            newX = initialX + initialW - 40;
+          }
+          newW = 40;
+        }
+        if (newH < 40) {
+          if (handle.includes("n")) {
+            // BottomEdge = initialY + initialH
+            newY = initialY + initialH - 40;
+          }
+          newH = 40;
+        }
 
-        setDragState(prev => (prev ? { ...prev, currentX: Math.round(newW), currentY: Math.round(newH) } : null));
+        setDragState(prev =>
+          prev
+            ? ({
+                ...prev,
+                newX,
+                newY,
+                newW,
+                newH,
+                // Update currentX/Y purely for debugging or unused, since we use newX/Y/W/H
+                currentX: newX,
+                currentY: newY,
+              } as any)
+            : null
+        );
       } else {
         // Move
         const newX = Math.round(dragState.startX + deltaX);
@@ -242,7 +340,7 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
         setDragState(prev => (prev ? { ...prev, currentX: newX, currentY: newY } : null));
       }
 
-      // Throttled layout update
+      // Throttle
       const now = Date.now();
       if (now - lastLayoutUpdateRef.current >= DRAG_THROTTLE_MS) {
         lastLayoutUpdateRef.current = now;

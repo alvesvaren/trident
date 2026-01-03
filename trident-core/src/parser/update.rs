@@ -37,6 +37,33 @@ pub fn update_node_size(ast: &mut FileAst, node_id: &str, width: i32, height: i3
     find_and_update_node_size(&mut ast.items, node_id, width, height)
 }
 
+/// Update the geometry (position and size) of a node by ID.
+/// Returns true if the node was found and updated.
+pub fn update_node_geometry(ast: &mut FileAst, node_id: &str, x: i32, y: i32, width: i32, height: i32) -> bool {
+    find_and_update_node_geometry(&mut ast.items, node_id, PointI { x, y }, width, height)
+}
+
+/// Recursively search for a node by ID and update its geometry
+fn find_and_update_node_geometry(items: &mut [Stmt], node_id: &str, new_pos: PointI, width: i32, height: i32) -> bool {
+    for stmt in items {
+        match stmt {
+            Stmt::Node(n) if n.id.0 == node_id => {
+                n.pos = Some(new_pos);
+                n.width = Some(width);
+                n.height = Some(height);
+                return true;
+            }
+            Stmt::Group(g) => {
+                if find_and_update_node_geometry(&mut g.items, node_id, new_pos, width, height) {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
 /// Recursively search for a node by ID and update its size
 fn find_and_update_node_size(items: &mut [Stmt], node_id: &str, width: i32, height: i32) -> bool {
     for stmt in items {

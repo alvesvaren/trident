@@ -15,6 +15,7 @@ pub use update::{
     remove_all_positions,
     insert_implicit_node,
     update_node_size,
+    update_node_geometry,
 };
 pub use types::*;
 pub use compile::{Diagram, GroupId, NodeId, Group, Node, Edge};
