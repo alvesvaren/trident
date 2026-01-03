@@ -172,6 +172,7 @@ export function SVGNode({ node, x, y, onMouseDown, onUnlock, onResizeStart, expo
       {node.has_pos && !exportMode && (
         <g
           transform={`translate(${node.bounds.w - padding - 12}, ${titleY - 10})`}
+          onMouseDown={e => e.stopPropagation()}
           onClick={e => {
             e.stopPropagation();
             onUnlock(e as unknown as React.MouseEvent<SVGGElement>);

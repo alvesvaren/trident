@@ -39,18 +39,22 @@ pub fn update_node_size(ast: &mut FileAst, node_id: &str, width: i32, height: i3
 
 /// Update the geometry (position and size) of a node by ID.
 /// Returns true if the node was found and updated.
-pub fn update_node_geometry(ast: &mut FileAst, node_id: &str, x: i32, y: i32, width: i32, height: i32) -> bool {
+pub fn update_node_geometry(ast: &mut FileAst, node_id: &str, x: i32, y: i32, width: Option<i32>, height: Option<i32>) -> bool {
     find_and_update_node_geometry(&mut ast.items, node_id, PointI { x, y }, width, height)
 }
 
 /// Recursively search for a node by ID and update its geometry
-fn find_and_update_node_geometry(items: &mut [Stmt], node_id: &str, new_pos: PointI, width: i32, height: i32) -> bool {
+fn find_and_update_node_geometry(items: &mut [Stmt], node_id: &str, new_pos: PointI, width: Option<i32>, height: Option<i32>) -> bool {
     for stmt in items {
         match stmt {
             Stmt::Node(n) if n.id.0 == node_id => {
                 n.pos = Some(new_pos);
-                n.width = Some(width);
-                n.height = Some(height);
+                if let Some(w) = width {
+                    n.width = Some(w);
+                }
+                if let Some(h) = height {
+                    n.height = Some(h);
+                }
                 return true;
             }
             Stmt::Group(g) => {
@@ -111,7 +115,7 @@ fn find_and_update_group(
     target_index: usize,
     current_index: &mut usize,
     new_pos: PointI,
-) -> bool {
+    ) -> bool {
     for stmt in items {
         if let Stmt::Group(g) = stmt {
             // Check if this is the target group
@@ -200,7 +204,7 @@ pub fn insert_implicit_node(ast: &mut FileAst, node_id: &str, pos: PointI) -> bo
     let node = NodeAst {
         kind: "node".to_string(),
         original_kind: "node".to_string(),
-        modifiers: vec!["rectangle".to_string()],
+        modifiers: Vec::new(), // Was vec!["rectangle"], now empty per user request
         id: Ident(node_id.to_string()),
         label: None,
         pos: Some(pos),

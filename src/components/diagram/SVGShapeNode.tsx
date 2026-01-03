@@ -110,6 +110,7 @@ export function SVGShapeNode({ node, x, y, onMouseDown, onUnlock, onResizeStart,
       {node.has_pos && !exportMode && (
         <g
           transform={`translate(${w - 16}, 4)`}
+          onMouseDown={e => e.stopPropagation()}
           onClick={e => {
             e.stopPropagation();
             onUnlock(e as unknown as React.MouseEvent<SVGGElement>);

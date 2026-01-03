@@ -168,15 +168,12 @@ export function useDiagramDrag({ code, onCodeChange, editorRef }: UseDiagramDrag
         // Ah, the previous implementation of update_node_position didn't touch W/H.
         // update_node_geometry DOES touch them.
         // So for "Node" drag (move only), we need W/H.
-        // We can store startW/startH in DragState when starting drag.
-        const w = (currentDrag as any).startW ?? 0; // Needs to be added to DragState for node
-        const h = (currentDrag as any).startH ?? 0;
-
         const newLocalXInt = Math.round(newLocalX);
         const newLocalYInt = Math.round(newLocalY);
 
-        // Use the unified function
-        newCode = trident_core.update_class_geometry(sourceCode, currentDrag.id, newLocalXInt, newLocalYInt, Math.round(w), Math.round(h));
+        // Use the unified function with -1 for W/H to indicate "no change/partial update"
+        // This prevents adding @width/@height when just moving a node
+        newCode = trident_core.update_class_geometry(sourceCode, currentDrag.id, newLocalXInt, newLocalYInt, -1, -1);
       } else if (currentDrag.type === "resize") {
         // Resizing a node (and potentially moving it if resizing from top/left)
         // currentX/Y in resize state tracks the NEW DIMENSIONS (W, H) or NEW POS?
