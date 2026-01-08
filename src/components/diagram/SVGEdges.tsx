@@ -106,11 +106,38 @@ export function SVGEdges({ edges, nodes, dragState }: SVGEdgesProps) {
               markerEnd={markerEnd}
               markerStart={markerStart}
             />
-            {edge.label && (
-              <text x={midX} y={midY - 6} fill='var(--canvas-text)' fontSize={11} fontFamily='ui-monospace, monospace' textAnchor='middle'>
-                {edge.label}
-              </text>
-            )}
+            {edge.label && (() => {
+              const fontSize = 11;
+              // Estimate text width for monospace font (roughly 0.6 * fontSize per character)
+              const estimatedTextWidth = edge.label.length * fontSize * 0.6;
+              const rectWidth = estimatedTextWidth;
+              const rectHeight = fontSize;
+              
+              return (
+                <g>
+                  <rect
+                    x={midX - rectWidth / 2}
+                    y={midY - rectHeight / 2}
+                    width={rectWidth}
+                    height={rectHeight}
+                    rx={2}
+                    ry={2}
+                    fill='var(--canvas-bg)'
+                  />
+                  <text
+                    x={midX}
+                    y={midY}
+                    fill='var(--canvas-text)'
+                    fontSize={fontSize}
+                    fontFamily='ui-monospace, monospace'
+                    textAnchor='middle'
+                    dominantBaseline='central'
+                  >
+                    {edge.label}
+                  </text>
+                </g>
+              );
+            })()}
           </g>
         );
       })}
