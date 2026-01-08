@@ -43,6 +43,16 @@ export function EdgeDefs() {
       <marker id='diamond-empty-start' markerWidth='12' markerHeight='8' refX='0' refY='4' orient='auto'>
         <polygon points='0 4, 6 0, 12 4, 6 8' fill='var(--canvas-marker-fill)' stroke='var(--canvas-edge)' strokeWidth='1' />
       </marker>
+
+      {/* Filled diamond (composition) for markerEnd - appears at target node */}
+      <marker id='diamond-end' markerWidth='12' markerHeight='8' refX='12' refY='4' orient='auto'>
+        <polygon points='0 4, 6 0, 12 4, 6 8' fill='var(--canvas-edge)' />
+      </marker>
+
+      {/* Empty diamond (aggregation) for markerEnd - appears at target node */}
+      <marker id='diamond-empty-end' markerWidth='12' markerHeight='8' refX='12' refY='4' orient='auto'>
+        <polygon points='0 4, 6 0, 12 4, 6 8' fill='var(--canvas-marker-fill)' stroke='var(--canvas-edge)' strokeWidth='1' />
+      </marker>
     </>
   );
 }

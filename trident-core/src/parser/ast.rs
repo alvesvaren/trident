@@ -23,6 +23,7 @@
 // - Relation endpoints must be IDENT (no qualification yet)
 
 use crate::parser::types::*;
+use crate::parser::types::{get_arrow_registry, arrow_from_token};
 use std::fmt;
 
 #[derive(Debug, Clone)]
@@ -694,6 +695,7 @@ fn parse_int_directive(line: &str, prefix: &str) -> Result<i32, String> {
 /// - "A <|-- B"
 fn split_relation_compact(s: &str) -> Option<(&str, &str, &str)> {
     let s = s.trim();
+    let registry = get_arrow_registry();
 
     // Fast path: try whitespace split into 3 parts
     {
@@ -709,13 +711,14 @@ fn split_relation_compact(s: &str) -> Option<(&str, &str, &str)> {
     }
 
     // Compact path: find any arrow token inside the string
-    for (tok, name) in ARROW_REGISTRY {
-        if let Some(pos) = s.find(tok) {
+    // Registry is already sorted by token length (longest first)
+    for entry in registry.iter() {
+        if let Some(pos) = s.find(entry.token) {
             let left = s[..pos].trim();
-            let right = s[pos + tok.len()..].trim();
+            let right = s[pos + entry.token.len()..].trim();
 
             if is_ident(left) && is_ident(right) {
-                return Some((left, name, right));
+                return Some((left, entry.canonical_name.as_str(), right));
             }
         }
     }

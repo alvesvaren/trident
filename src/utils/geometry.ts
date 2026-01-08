@@ -1,4 +1,5 @@
 import type { Bounds } from "../types/diagram";
+import { getArrowByName, type ArrowEntry } from "../types/arrows";
 
 /** Get center of a bounds rectangle */
 export function getCenter(b: Bounds): { x: number; y: number } {
@@ -80,12 +81,30 @@ export function getEdgePoint(bounds: Bounds, targetX: number, targetY: number, s
 
 /** Check if arrow points to the "from" node (left arrows) */
 export function isLeftArrow(arrow: string): boolean {
-  return arrow.endsWith("_left");
+  const entry = getArrowByName(arrow);
+  return entry?.is_left ?? false;
 }
 
 /** Check if the edge should be dashed */
 export function isDashed(arrow: string): boolean {
-  return arrow === "dotted" || arrow.startsWith("dep_") || arrow.startsWith("implements_");
+  const entry = getArrowByName(arrow);
+  return entry?.line_style === "dashed";
+}
+
+/** Map head style to SVG marker ID */
+function headStyleToMarker(headStyle: string, position: "start" | "end"): string {
+  switch (headStyle) {
+    case "arrow":
+      return `url(#arrowhead-${position})`;
+    case "triangle":
+      return `url(#triangle-${position})`;
+    case "diamond_filled":
+      return `url(#diamond-${position})`;
+    case "diamond_empty":
+      return `url(#diamond-empty-${position})`;
+    default:
+      return "";
+  }
 }
 
 /** Get the marker type for an edge based on arrow type and direction */
@@ -93,23 +112,31 @@ export function getEdgeMarkers(arrow: string): {
   markerStart: string;
   markerEnd: string;
 } {
-  const leftArrow = isLeftArrow(arrow);
-  const arrowAtFrom = leftArrow;
-  const baseArrow = arrow.replace("_left", "").replace("_right", "");
+  const entry = getArrowByName(arrow);
+  
+  if (!entry) {
+    // Fallback for unknown arrows
+    return { markerStart: "", markerEnd: "" };
+  }
 
-  let markerEnd = "";
+  const isLeft = entry.is_left;
+  
+  // For left arrows, the visual direction is reversed
+  // head_style goes on the "from" side (markerStart)
+  // tail_style goes on the "to" side (markerEnd)
+  // For right arrows, it's the opposite
+  
   let markerStart = "";
-
-  if (baseArrow === "extends" || baseArrow === "implements") {
-    if (arrowAtFrom) markerStart = "url(#triangle-start)";
-    else markerEnd = "url(#triangle-end)";
-  } else if (baseArrow === "assoc" || baseArrow === "dep") {
-    if (arrowAtFrom) markerStart = "url(#arrowhead-start)";
-    else markerEnd = "url(#arrowhead-end)";
-  } else if (baseArrow === "aggregate") {
-    markerStart = "url(#diamond-empty-start)";
-  } else if (baseArrow === "compose") {
-    markerStart = "url(#diamond-start)";
+  let markerEnd = "";
+  
+  if (isLeft) {
+    // Left arrow: head is at the "from" node (markerStart)
+    markerStart = headStyleToMarker(entry.head_style, "start");
+    markerEnd = headStyleToMarker(entry.tail_style, "end");
+  } else {
+    // Right arrow or non-directional: head is at the "to" node (markerEnd)
+    markerEnd = headStyleToMarker(entry.head_style, "end");
+    markerStart = headStyleToMarker(entry.tail_style, "start");
   }
 
   return { markerStart, markerEnd };

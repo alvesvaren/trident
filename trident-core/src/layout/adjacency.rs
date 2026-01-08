@@ -152,7 +152,8 @@ pub fn compute_group_adjacency(diagram: &Diagram) -> HashMap<(GroupId, GroupId),
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::{Ident, Group, Node, Edge};
+    use crate::parser::Ident;
+    use crate::parser::compile::{Group, Node, Edge};
 
     fn make_test_diagram() -> Diagram {
         // A simple diagram: A -> B -> C, all in same group

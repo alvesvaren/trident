@@ -7,7 +7,7 @@ use serde_json::to_string;
 
 use crate::layout::{layout_diagram, LayoutConfig, RectI};
 use crate::output::{DiagramOutput, NodeOutput, EdgeOutput, GroupOutput, ErrorInfo};
-use crate::parser::{self, PointI};
+use crate::parser::{self, PointI, get_arrow_registry};
 
 #[wasm_bindgen]
 extern "C" {
@@ -243,6 +243,15 @@ pub fn rename_symbol(source: &str, old_name: &str, new_name: &str) -> String {
         console_error(&format!("Symbol '{}' not found", old_name));
         source.to_string()
     }
+}
+
+/// Get the arrow registry as JSON.
+/// Returns all arrow definitions including auto-generated left variants.
+/// This is used by the TypeScript side for autocomplete, syntax highlighting, and rendering.
+#[wasm_bindgen]
+pub fn get_arrows() -> String {
+    let registry = get_arrow_registry();
+    serde_json::to_string(registry).unwrap_or_else(|_| "[]".to_string())
 }
 
 /// Get all defined symbols (node IDs and group IDs) in the source.
