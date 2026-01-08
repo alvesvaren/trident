@@ -100,7 +100,7 @@ export function getEdgeMarkers(arrow: string): {
   let markerEnd = "";
   let markerStart = "";
 
-  if (baseArrow === "extends") {
+  if (baseArrow === "extends" || baseArrow === "dep_extends") {
     if (arrowAtFrom) markerStart = "url(#triangle-start)";
     else markerEnd = "url(#triangle-end)";
   } else if (baseArrow === "assoc" || baseArrow === "dep") {

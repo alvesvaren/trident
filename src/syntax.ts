@@ -45,6 +45,8 @@ const ARROWS = [
   { token: "<--", label: "<-- (association left)", detail: "Left association" },
   { token: "<|--", label: "<|-- (extends)", detail: "Inheritance/extends" },
   { token: "--|>", label: "--|> (extends right)", detail: "Inheritance/extends" },
+  { token: "..|>", label: "..|> (dotted extends)", detail: "Dotted inheritance arrow" },
+  { token: "<|..", label: "<|.. (dotted extends left)", detail: "Left dotted inheritance" },
   { token: "..>", label: "..> (dependency)", detail: "Dependency arrow" },
   { token: "<..", label: "<.. (dependency left)", detail: "Left dependency" },
   { token: "---", label: "--- (line)", detail: "Simple line" },
@@ -164,7 +166,7 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
     keywords: ["classDiagram", "group"],
 
     // Arrow tokens (longest first)
-    arrows: ["<|--", "--|>", "..>", "<..", "---", "-->", "<--", "o--", "*--", ".."],
+    arrows: ["<|..", "..|>", "<|--", "--|>", "..>", "<..", "---", "-->", "<--", "o--", "*--", ".."],
 
     tokenizer: {
       root: [
@@ -193,7 +195,7 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
 
         // arrow operators (including when embedded in A-->B)
         // We highlight them anywhere in the line; Monaco will match mid-token.
-        [/<\|--|--\|>|\.\.>|<\.\.|----|-->|<--|o--|\*--|\.\./, "operator"],
+        [/<\|\.\.|\.\.\|>|<\|--|--\|>|\.\.>|<\.\.|----|-->|<--|o--|\*--|\.\./, "operator"],
 
         // label delimiter in relations (A-->B:label)
         [/:/, "delimiter"],
