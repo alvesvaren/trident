@@ -160,9 +160,15 @@ export function EdgeOverlay({ edges, nodes, dragState }: EdgeOverlayProps) {
 
                 const fromCenter = getCenter(fromBounds);
                 const toCenter = getCenter(toBounds);
-                const start = getEdgePoint(fromBounds, toCenter.x, toCenter.y);
-                const end = getEdgePoint(toBounds, fromCenter.x, fromCenter.y);
                 const { markerStart, markerEnd } = getEdgeMarkers(edge.arrow);
+                
+                // Apply offset only at the arrow-head end (where the marker is)
+                const ARROW_OFFSET = 10;
+                const startOffset = markerStart && markerStart !== "" ? ARROW_OFFSET : 0;
+                const endOffset = markerEnd && markerEnd !== "" ? ARROW_OFFSET : 0;
+                
+                const start = getEdgePoint(fromBounds, toCenter.x, toCenter.y, "rectangle", startOffset);
+                const end = getEdgePoint(toBounds, fromCenter.x, fromCenter.y, "rectangle", endOffset);
 
                 const midX = (start.x + end.x) / 2;
                 const midY = (start.y + end.y) / 2;
