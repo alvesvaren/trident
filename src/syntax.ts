@@ -13,8 +13,12 @@
 
 import type * as monaco from "monaco-editor";
 import * as trident_core from "trident-core";
+import { initArrowRegistry, getArrowRegistry, generateArrowLabel, type ArrowEntry } from "./types/arrows";
 
 export const TRIDENT_ID = "trident";
+
+// Initialize arrow registry from Rust
+initArrowRegistry(trident_core);
 
 // Keywords for completion
 const KEYWORDS = [
@@ -37,20 +41,6 @@ const KEYWORDS = [
   "public",
   "private",
   "protected",
-];
-
-// Arrow tokens for completion
-const ARROWS = [
-  { token: "-->", label: "--> (association)", detail: "Association arrow" },
-  { token: "<--", label: "<-- (association left)", detail: "Left association" },
-  { token: "<|--", label: "<|-- (extends)", detail: "Inheritance/extends" },
-  { token: "--|>", label: "--|> (extends right)", detail: "Inheritance/extends" },
-  { token: "..>", label: "..> (dependency)", detail: "Dependency arrow" },
-  { token: "<..", label: "<.. (dependency left)", detail: "Left dependency" },
-  { token: "---", label: "--- (line)", detail: "Simple line" },
-  { token: "o--", label: "o-- (aggregation)", detail: "Aggregation" },
-  { token: "*--", label: "*-- (composition)", detail: "Composition" },
-  { token: "..", label: ".. (dotted)", detail: "Dotted line" },
 ];
 
 // Snippets for completion
@@ -117,7 +107,44 @@ const SNIPPETS = [
   },
 ];
 
+/** Build arrow completions from the registry */
+function getArrowCompletions(): { token: string; label: string; detail: string }[] {
+  return getArrowRegistry().map((entry: ArrowEntry) => ({
+    token: entry.token,
+    label: generateArrowLabel(entry.token, entry.name, entry.is_left),
+    detail: entry.detail,
+  }));
+}
+
+/** Build regex for arrows that contain parentheses (must match before other rules) */
+function buildParenArrowRegex(): RegExp {
+  const tokens = getArrowRegistry()
+    .map((e: ArrowEntry) => e.token)
+    .filter(t => t.includes('(') || t.includes(')'));
+  if (tokens.length === 0) return /(?!)/; // Never matches
+  const sorted = tokens.sort((a, b) => b.length - a.length);
+  const escaped = sorted.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return new RegExp(`(?:${escaped.join('|')})`);
+}
+
+/** Build regex for arrow tokenization (excluding paren arrows, which are handled separately) */
+function buildArrowRegex(): RegExp {
+  const tokens = getArrowRegistry()
+    .map((e: ArrowEntry) => e.token)
+    .filter(t => !t.includes('(') && !t.includes(')'));
+  if (tokens.length === 0) return /(?!)/; // Never matches
+  const sorted = tokens.sort((a, b) => b.length - a.length);
+  const escaped = sorted.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return new RegExp(escaped.join('|'));
+}
+
 export function registerSddLanguage(monacoApi: typeof monaco) {
+  // Get arrow data from registry
+  const arrowTokens = getArrowRegistry().map((e: ArrowEntry) => e.token);
+  const arrowRegex = buildArrowRegex();
+  const parenArrowRegex = buildParenArrowRegex();
+  const arrowCompletions = getArrowCompletions();
+
   // 1) Register language
   monacoApi.languages.register({ id: TRIDENT_ID });
 
@@ -128,16 +155,13 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
     },
     brackets: [
       ["{", "}"],
-      ["(", ")"],
     ],
     autoClosingPairs: [
       { open: "{", close: "}" },
-      { open: "(", close: ")" },
       { open: '"', close: '"' },
     ],
     surroundingPairs: [
       { open: "{", close: "}" },
-      { open: "(", close: ")" },
       { open: '"', close: '"' },
     ],
     folding: {
@@ -163,13 +187,16 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
     // Other keywords
     keywords: ["classDiagram", "group"],
 
-    // Arrow tokens (longest first)
-    arrows: ["<|--", "--|>", "..>", "<..", "---", "-->", "<--", "o--", "*--", ".."],
+    // Arrow tokens (from registry, already sorted by length)
+    arrows: arrowTokens,
 
     tokenizer: {
       root: [
         // line comment
         [/%%.*$/, "comment"],
+
+        // arrow operators with parentheses (must come first to prevent parens from being tokenized separately)
+        [parenArrowRegex, "operator"],
 
         // directive (currently only @pos:)
         [/[@]pos:/, "annotation"],
@@ -181,9 +208,8 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
         [/[@]width:/, "annotation"],
         [/[@]height:/, "annotation"],
 
-        // braces / parens
+        // braces
         [/[{}]/, "@brackets"],
-        [/[()]/, "@brackets"],
 
         // numbers (for @pos coords)
         [/-?\d+/, "number"],
@@ -192,8 +218,7 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
         [/"/, { token: "string.quote", bracket: "@open", next: "@string" }],
 
         // arrow operators (including when embedded in A-->B)
-        // We highlight them anywhere in the line; Monaco will match mid-token.
-        [/<\|--|--\|>|\.\.>|<\.\.|----|-->|<--|o--|\*--|\.\./, "operator"],
+        [arrowRegex, "operator"],
 
         // label delimiter in relations (A-->B:label)
         [/:/, "delimiter"],
@@ -271,7 +296,7 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
       const arrowTypingMatch = textBeforeCursor.match(/[A-Za-z_][A-Za-z0-9_]*[\s]+([-.<>|*o]*)$/);
       if (arrowTypingMatch) {
         const partialArrow = arrowTypingMatch[1];
-        for (const arrow of ARROWS) {
+        for (const arrow of arrowCompletions) {
           if (arrow.token.startsWith(partialArrow) || partialArrow === "") {
             suggestions.push({
               label: arrow.label,

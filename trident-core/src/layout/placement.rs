@@ -106,12 +106,44 @@ pub fn layout_group_children_graph_driven(
 /// Helper function to get arrow direction for ranking.
 /// Returns (parent_id, child_id) where parent should be above child.
 fn get_edge_direction(arrow: &str, from: NodeId, to: NodeId) -> (NodeId, NodeId) {
-    match arrow {
-        "extends_right" => (to, from),     // B is parent of A
-        "extends_left" => (from, to),      // A is parent of B
-        "compose" | "aggregate" | "assoc_right" | "dep_right" => (from, to), // A owns/calls B
-        "assoc_left" | "dep_left" => (to, from), // B owns/calls A
-        _ => (from, to), // Default
+    use crate::parser::{get_arrow_definition, get_base_arrow_name, ARROW_DEFINITIONS};
+    
+    if let Some(def) = get_arrow_definition(arrow) {
+        if !def.definition.is_left {
+            // Right arrow or non-directional
+            // Check if hierarchy is reversed (like extends where "to" is parent)
+            let base_name = get_base_arrow_name(arrow);
+            let is_hierarchy_reversed = ARROW_DEFINITIONS
+                .iter()
+                .find(|d| d.name == base_name)
+                .map(|d| d.hierarchy_reversed)
+                .unwrap_or(false);
+            
+            if is_hierarchy_reversed {
+                (to, from)
+            } else {
+                (from, to)
+            }
+        } else {
+            // Left arrow: the visual direction is reversed
+            // For left arrows, if the base arrow has hierarchy_reversed, 
+            // the "from" becomes the parent
+            let base_name = get_base_arrow_name(arrow);
+            let is_hierarchy_reversed = ARROW_DEFINITIONS
+                .iter()
+                .find(|d| d.name == base_name)
+                .map(|d| d.hierarchy_reversed)
+                .unwrap_or(false);
+            
+            if is_hierarchy_reversed {
+                (from, to)
+            } else {
+                (to, from)
+            }
+        }
+    } else {
+        // Unknown arrow, default behavior
+        (from, to)
     }
 }
 

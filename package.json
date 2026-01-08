@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "wasm-build": "wasm-pack build trident-core --target web",
+    "wasm-build": "wasm-pack build trident-core --target bundler",
     "build": "pnpm run wasm-build && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
