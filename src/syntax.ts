@@ -116,35 +116,25 @@ function getArrowCompletions(): { token: string; label: string; detail: string }
   }));
 }
 
-/** Build regex for arrows that contain parentheses (need special handling) */
+/** Build regex for arrows that contain parentheses (must match before other rules) */
 function buildParenArrowRegex(): RegExp {
   const tokens = getArrowRegistry()
     .map((e: ArrowEntry) => e.token)
     .filter(t => t.includes('(') || t.includes(')'));
   if (tokens.length === 0) return /(?!)/; // Never matches
-  // Sort by length (longest first) for proper matching
   const sorted = tokens.sort((a, b) => b.length - a.length);
-  const escaped = sorted.map(t => {
-    // Escape special regex characters
-    const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // Wrap in word boundaries to ensure we match the full token
-    return escaped;
-  });
-  // Use a non-capturing group and ensure we match the full token
+  const escaped = sorted.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   return new RegExp(`(?:${escaped.join('|')})`);
 }
 
-/** Build the regex pattern for arrow tokenization (excluding paren arrows) */
+/** Build regex for arrow tokenization (excluding paren arrows, which are handled separately) */
 function buildArrowRegex(): RegExp {
   const tokens = getArrowRegistry()
     .map((e: ArrowEntry) => e.token)
     .filter(t => !t.includes('(') && !t.includes(')'));
   if (tokens.length === 0) return /(?!)/; // Never matches
-  // Sort by length (longest first) for proper matching
   const sorted = tokens.sort((a, b) => b.length - a.length);
-  const escaped = sorted.map(t => 
-    t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  );
+  const escaped = sorted.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   return new RegExp(escaped.join('|'));
 }
 
@@ -205,8 +195,7 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
         // line comment
         [/%%.*$/, "comment"],
 
-        // arrow operators with parentheses (MUST come FIRST to prevent parens from being tokenized separately)
-        // Match arrows like --) and (-- explicitly before anything else can match the parens
+        // arrow operators with parentheses (must come first to prevent parens from being tokenized separately)
         [parenArrowRegex, "operator"],
 
         // directive (currently only @pos:)
@@ -229,7 +218,6 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
         [/"/, { token: "string.quote", bracket: "@open", next: "@string" }],
 
         // arrow operators (including when embedded in A-->B)
-        // We highlight them anywhere in the line; Monaco will match mid-token.
         [arrowRegex, "operator"],
 
         // label delimiter in relations (A-->B:label)
