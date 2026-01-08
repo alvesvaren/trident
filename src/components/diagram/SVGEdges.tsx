@@ -26,11 +26,11 @@ export function EdgeDefs() {
         <polygon points='1 1, 9 4.5, 1 8' fill='var(--canvas-marker-fill)' stroke='var(--canvas-edge)' strokeWidth='1' />
       </marker>
 
-      <marker id='diamond' markerWidth='13' markerHeight='10' refX='6' refY='4' orient='auto-start-reverse'>
-        <polygon points='0 4, 6 0, 12 4, 6 8' fill='var(--canvas-edge)' />
+      <marker id='diamond' markerWidth='13' markerHeight='10' refX='11' refY='5' orient='auto-start-reverse'>
+        <polygon points='0 5, 6 1, 12 5, 6 9' fill='var(--canvas-edge)' />
       </marker>
 
-      <marker id='diamond-empty' markerWidth='13' markerHeight='10' refX='12' refY='5' orient='auto-start-reverse'>
+      <marker id='diamond-empty' markerWidth='13' markerHeight='10' refX='11' refY='5' orient='auto-start-reverse'>
         <polygon points='0 5, 6 1, 12 5, 6 9' fill='var(--canvas-marker-fill)' stroke='var(--canvas-edge)' strokeWidth='1' />
       </marker>
     </>
@@ -79,9 +79,9 @@ export function SVGEdges({ edges, nodes, dragState }: SVGEdgesProps) {
         const { markerStart, markerEnd } = getEdgeMarkers(edge.arrow);
         
         // Apply offset only at the arrow-head end (where the marker is)
-        const ARROW_OFFSET = 10; // Increased for testing visibility
-        const startOffset = markerStart && markerStart !== "" ? ARROW_OFFSET : 0;
-        const endOffset = markerEnd && markerEnd !== "" ? ARROW_OFFSET : 0;
+        const ARROW_OFFSET = 5;
+        const startOffset = markerStart ? ARROW_OFFSET : 0;
+        const endOffset = markerEnd ? ARROW_OFFSET : 0;
         
         const start = getEdgePoint(fromBounds, toCenter.x, toCenter.y, fromShape, startOffset);
         const end = getEdgePoint(toBounds, fromCenter.x, fromCenter.y, toShape, endOffset);
