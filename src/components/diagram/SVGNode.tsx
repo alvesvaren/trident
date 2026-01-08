@@ -191,18 +191,50 @@ export function SVGNode({ node, x, y, onMouseDown, onUnlock, onResizeStart, expo
       <line x1={0} y1={separatorY} x2={node.bounds.w} y2={separatorY} stroke='var(--canvas-border)' strokeWidth={1} />
 
       {/* Body lines */}
-      {node.body_lines.map((line, i) => (
-        <text
-          key={i}
-          x={padding}
-          y={separatorY + 4 + (i + 1) * lineHeight}
-          fill='var(--canvas-text)'
-          fontSize={bodyFontSize}
-          fontFamily='ui-monospace, monospace'
-        >
-          {line}
-        </text>
-      ))}
+      {(() => {
+        const baseY = separatorY + 2;
+        const separatorSpacing = 10; // Total vertical space for separator (less than lineHeight = 14)
+        let cumulativeOffset = 0;
+        
+        return node.body_lines.map((line, i) => {
+          const isSeparator = /^\s*-{3,}\s*$/.test(line);
+          
+          if (isSeparator) {
+            // Center separator in reduced vertical space
+            const y = baseY + cumulativeOffset + separatorSpacing / 2;
+            cumulativeOffset += separatorSpacing;
+            
+            return (
+              <line
+                key={i}
+                x1={0}
+                y1={y + separatorSpacing / 2 - 2}
+                x2={node.bounds.w}
+                y2={y + separatorSpacing / 2 - 2}
+                stroke='var(--canvas-border)'
+                strokeWidth={1}
+              />
+            );
+          }
+          
+          // Regular text line (baseline positioned)
+          cumulativeOffset += lineHeight;
+          const y = baseY + cumulativeOffset;
+          
+          return (
+            <text
+              key={i}
+              x={padding}
+              y={y}
+              fill='var(--canvas-text)'
+              fontSize={bodyFontSize}
+              fontFamily='ui-monospace, monospace'
+            >
+              {line}
+            </text>
+          );
+        });
+      })()}
     </g>
   );
 }
