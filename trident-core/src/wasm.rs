@@ -6,7 +6,92 @@ use wasm_bindgen::prelude::*;
 use serde_json::to_string;
 
 use crate::layout::{layout_diagram, LayoutConfig, RectI};
-use crate::output::{DiagramOutput, NodeOutput, EdgeOutput, GroupOutput, ErrorInfo};
+use crate::output::{DiagramOutput, NodeOutput, EdgeOutput, GroupOutput, ErrorInfo, TextElement};
+use crate::layout::NodeRenderingConfig;
+
+/// Generate positioned text elements for a node
+fn generate_text_elements(node: &crate::parser::compile::Node, config: &NodeRenderingConfig) -> Vec<TextElement> {
+    let mut elements = Vec::new();
+    let mut current_y = config.padding;
+
+    // Add stereotype if present
+    let has_stereotypes = !node.modifiers.is_empty() || node.kind != "class";
+    if has_stereotypes {
+        let stereotypes = format_modifiers(&node.modifiers, &node.kind);
+        elements.push(TextElement::Stereotype {
+            text: stereotypes,
+            y: current_y + 10, // Baseline for 10px font, centered in line_height
+            font_size: 10,
+        });
+        current_y += config.line_height;
+    }
+
+    // Add title
+    let title = node.label.as_ref().unwrap_or(&node.id.0).clone();
+    let is_abstract = node.modifiers.contains(&"abstract".to_string());
+    elements.push(TextElement::Title {
+        text: title,
+        y: current_y + 12, // Baseline for 12px font
+        font_size: 12,
+        italic: is_abstract,
+    });
+    current_y += config.line_height;
+
+    // Always add separator line below title (centered in its line slot)
+    elements.push(TextElement::Separator {
+        x1: 0,
+        y1: current_y + config.line_height / 2,
+        x2: 9999,
+        y2: current_y + config.line_height / 2,
+    });
+    current_y += config.line_height;
+
+    // Add body lines in a simple column
+    for line in &node.body_lines {
+        if is_separator_line(line) {
+            // Add separator line (centered in its line slot)
+            elements.push(TextElement::Separator {
+                x1: 0,
+                y1: current_y + config.line_height / 2,
+                x2: 9999,
+                y2: current_y + config.line_height / 2,
+            });
+            current_y += config.line_height;
+        } else {
+            // Add text line (baseline positioned for 11px font)
+            elements.push(TextElement::BodyText {
+                text: line.clone(),
+                y: current_y + 11,
+                font_size: 11,
+            });
+            current_y += config.line_height;
+        }
+    }
+
+    elements
+}
+
+/// Format modifiers and kind for stereotype display
+fn format_modifiers(modifiers: &[String], kind: &str) -> String {
+    let mut parts = Vec::new();
+
+    // Add modifiers as stereotypes
+    for modifier in modifiers {
+        parts.push(format!("«{}»", modifier));
+    }
+
+    // Add kind as stereotype if not "class"
+    if kind != "class" {
+        parts.push(format!("«{}»", kind));
+    }
+
+    parts.join(" ")
+}
+
+/// Check if a line is a separator (---)
+fn is_separator_line(line: &str) -> bool {
+    line.trim().chars().all(|c| c == '-')
+}
 use crate::parser::{self, PointI, get_arrow_registry};
 
 #[wasm_bindgen]
@@ -84,12 +169,21 @@ pub fn compile_diagram(input: &str) -> String {
         let bounds = layout_result.node_world_bounds.get(&n.nid).copied().unwrap_or(RectI { x: 0, y: 0, w: 0, h: 0 });
         // Get parent group's world position for local coordinate calculation
         let parent_world = layout_result.group_world_pos.get(&n.group).copied().unwrap_or(PointI { x: 0, y: 0 });
+        let rendering_config = NodeRenderingConfig {
+            padding: 8,
+            line_height: 14,
+            separator_spacing: 10,
+            char_width: 7,
+        };
+        let text_elements = generate_text_elements(n, &rendering_config);
+
         NodeOutput {
             id: n.id.0.clone(),
             kind: n.kind.clone(),
             modifiers: n.modifiers.clone(),
             label: n.label.clone(),
-            body_lines: n.body_lines.clone(),
+            text_elements,
+            rendering_config,
             bounds,
             has_pos: n.pos.is_some(),
             parent_offset: parent_world,

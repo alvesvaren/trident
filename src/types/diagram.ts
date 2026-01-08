@@ -9,6 +9,19 @@ export interface Bounds {
   h: number;
 }
 
+export type TextElement =
+  | { type: "Stereotype"; data: { text: string; y: number; font_size: number } }
+  | { type: "Title"; data: { text: string; y: number; font_size: number; italic: boolean } }
+  | { type: "Separator"; data: { x1: number; y1: number; x2: number; y2: number } }
+  | { type: "BodyText"; data: { text: string; y: number; font_size: number } };
+
+export interface NodeRenderingConfig {
+  padding: number;
+  line_height: number;
+  separator_spacing: number;
+  char_width: number;
+}
+
 export interface DiagramNode {
   id: string;
   /** Node kind: "class" or "node" */
@@ -16,7 +29,8 @@ export interface DiagramNode {
   /** Modifiers: "abstract", "interface", "enum", "rectangle", "circle", "diamond", etc. */
   modifiers: string[];
   label: string | null;
-  body_lines: string[];
+  text_elements: TextElement[];
+  rendering_config: NodeRenderingConfig;
   bounds: Bounds;
   has_pos: boolean;
   parent_offset: { x: number; y: number };

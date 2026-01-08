@@ -73,6 +73,20 @@ pub struct LayoutConfig {
     pub node_size: SizeI,
     /// Minimum size for groups (even if empty).
     pub min_group_size: SizeI,
+    /// Rendering constants for content-based sizing (mirrored from SVGNode.tsx)
+    pub node_rendering: NodeRenderingConfig,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct NodeRenderingConfig {
+    /// Padding around node content
+    pub padding: i32,
+    /// Height of each line of text
+    pub line_height: i32,
+    /// Space between lines for separator (---) lines
+    pub separator_spacing: i32,
+    /// Average character width in monospace font (pixels)
+    pub char_width: i32,
 }
 
 impl Default for LayoutConfig {
@@ -84,6 +98,12 @@ impl Default for LayoutConfig {
             class_size: SizeI { w: 220, h: 120 },
             node_size: SizeI { w: 80, h: 80 },
             min_group_size: SizeI { w: 200, h: 120 },
+            node_rendering: NodeRenderingConfig {
+                padding: 8,
+                line_height: 14,
+                separator_spacing: 10,
+                char_width: 7, // Approximate width of monospace character
+            },
         }
     }
 }
@@ -144,17 +164,69 @@ pub fn layout_diagram_with_strategy<S: LayoutStrategy>(
 use crate::parser::compile::Node;
 
 /// Get the size for a node, considering kind, custom dimensions, and config defaults.
+/// For unconstrained nodes (no explicit width/height), calculates size based on content.
 pub fn get_node_size(node: &Node, cfg: &LayoutConfig) -> SizeI {
     let default = if node.kind == "node" {
         cfg.node_size
     } else {
         cfg.class_size
     };
-    
-    SizeI {
-        w: node.width.unwrap_or(default.w),
-        h: node.height.unwrap_or(default.h),
+
+    let width = match node.width {
+        Some(w) => w,
+        None => calculate_content_width(node, cfg, default.w),
+    };
+
+    let height = match node.height {
+        Some(h) => h,
+        None => calculate_content_height(node, &cfg.node_rendering),
+    };
+
+    SizeI { w: width, h: height }
+}
+
+/// Calculate width based on content for unconstrained nodes
+fn calculate_content_width(_node: &Node, _cfg: &LayoutConfig, min_width: i32) -> i32 {
+    // For now, just use minimum width - focus on vertical layout
+    min_width
+}
+
+/// Calculate height based on content for unconstrained nodes
+fn calculate_content_height(node: &Node, r: &NodeRenderingConfig) -> i32 {
+    let mut num_lines = 0;
+
+    // Count lines
+    if !node.modifiers.is_empty() || node.kind != "class" {
+        num_lines += 1; // stereotype
     }
+    num_lines += 1; // title
+    num_lines += 1; // separator
+    num_lines += node.body_lines.len(); // body lines
+
+    // Height = padding + (num_lines * line_height) + padding
+    r.padding + (num_lines as i32 * r.line_height) + r.padding
+}
+
+/// Format modifiers and kind for stereotype display (mirrored from SVGNode.tsx)
+fn format_modifiers(modifiers: &[String], kind: &str) -> String {
+    let mut parts = Vec::new();
+
+    // Add modifiers as stereotypes
+    for modifier in modifiers {
+        parts.push(format!("«{}»", modifier));
+    }
+
+    // Add kind as stereotype if not "class"
+    if kind != "class" {
+        parts.push(format!("«{}»", kind));
+    }
+
+    parts.join(" ")
+}
+
+/// Check if a line is a separator (---)
+fn is_separator_line(line: &str) -> bool {
+    line.trim().chars().all(|c| c == '-')
 }
 
 /// Compute a group's container bounds in LOCAL coordinates, based on children.
