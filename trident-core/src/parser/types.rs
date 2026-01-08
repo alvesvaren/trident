@@ -133,19 +133,16 @@ pub enum ArrowDirection {
 pub struct ArrowDefinition {
     /// The token as written in source (e.g., "-->", "<|--")
     pub token: &'static str,
-    /// Canonical name for the arrow (e.g., "assoc", "extends")
+    /// User-facing short name for the arrow (e.g., "assoc", "extends")
     /// Direction suffix (_left/_right) is added automatically for directional arrows
     pub name: &'static str,
-    /// Human-readable label for autocomplete dropdown
-    pub label: &'static str,
     /// Detailed description for autocomplete
     pub detail: &'static str,
     /// Line style (solid or dashed)
     pub line_style: LineStyle,
     /// Head style at the "to" end (or source for left arrows)
+    /// For diamonds at source (composition/aggregation), this is the marker at the "from" node
     pub head_style: HeadStyle,
-    /// Head style at the "from" end (for bidirectional markers like diamonds)
-    pub tail_style: HeadStyle,
     /// Direction of the arrow
     pub direction: ArrowDirection,
     /// For hierarchical layout: does this arrow indicate parent->child relationship?
@@ -164,11 +161,9 @@ pub const ARROW_DEFINITIONS: &[ArrowDefinition] = &[
     ArrowDefinition {
         token: "-->",
         name: "assoc",
-        label: "--> (association)",
         detail: "Association arrow",
         line_style: LineStyle::Solid,
         head_style: HeadStyle::Arrow,
-        tail_style: HeadStyle::None,
         direction: ArrowDirection::Right,
         is_hierarchy_edge: true,
         hierarchy_reversed: false,
@@ -177,11 +172,9 @@ pub const ARROW_DEFINITIONS: &[ArrowDefinition] = &[
     ArrowDefinition {
         token: "--|>",
         name: "extends",
-        label: "--|> (extends)",
         detail: "Inheritance/extends arrow",
         line_style: LineStyle::Solid,
         head_style: HeadStyle::Triangle,
-        tail_style: HeadStyle::None,
         direction: ArrowDirection::Right,
         is_hierarchy_edge: true,
         hierarchy_reversed: true, // Child extends Parent, so "to" is parent
@@ -190,11 +183,9 @@ pub const ARROW_DEFINITIONS: &[ArrowDefinition] = &[
     ArrowDefinition {
         token: "..|>",
         name: "implements",
-        label: "..|> (implements)",
         detail: "Implements/realizes arrow",
         line_style: LineStyle::Dashed,
         head_style: HeadStyle::Triangle,
-        tail_style: HeadStyle::None,
         direction: ArrowDirection::Right,
         is_hierarchy_edge: true,
         hierarchy_reversed: true, // Implementor implements Interface, so "to" is parent
@@ -203,11 +194,9 @@ pub const ARROW_DEFINITIONS: &[ArrowDefinition] = &[
     ArrowDefinition {
         token: "..>",
         name: "dep",
-        label: "..> (dependency)",
         detail: "Dependency arrow",
         line_style: LineStyle::Dashed,
         head_style: HeadStyle::Arrow,
-        tail_style: HeadStyle::None,
         direction: ArrowDirection::Right,
         is_hierarchy_edge: true,
         hierarchy_reversed: false,
@@ -216,11 +205,9 @@ pub const ARROW_DEFINITIONS: &[ArrowDefinition] = &[
     ArrowDefinition {
         token: "*--",
         name: "compose",
-        label: "*-- (composition)",
         detail: "Composition (strong ownership)",
         line_style: LineStyle::Solid,
-        head_style: HeadStyle::None,
-        tail_style: HeadStyle::DiamondFilled,
+        head_style: HeadStyle::DiamondFilled, // Diamond at source (from node)
         direction: ArrowDirection::Right,
         is_hierarchy_edge: true,
         hierarchy_reversed: false,
@@ -229,11 +216,9 @@ pub const ARROW_DEFINITIONS: &[ArrowDefinition] = &[
     ArrowDefinition {
         token: "o--",
         name: "aggregate",
-        label: "o-- (aggregation)",
         detail: "Aggregation (weak ownership)",
         line_style: LineStyle::Solid,
-        head_style: HeadStyle::None,
-        tail_style: HeadStyle::DiamondEmpty,
+        head_style: HeadStyle::DiamondEmpty, // Diamond at source (from node)
         direction: ArrowDirection::Right,
         is_hierarchy_edge: true,
         hierarchy_reversed: false,
@@ -242,11 +227,9 @@ pub const ARROW_DEFINITIONS: &[ArrowDefinition] = &[
     ArrowDefinition {
         token: "---",
         name: "line",
-        label: "--- (line)",
         detail: "Simple line (no direction)",
         line_style: LineStyle::Solid,
         head_style: HeadStyle::None,
-        tail_style: HeadStyle::None,
         direction: ArrowDirection::None,
         is_hierarchy_edge: false,
         hierarchy_reversed: false,
@@ -255,11 +238,9 @@ pub const ARROW_DEFINITIONS: &[ArrowDefinition] = &[
     ArrowDefinition {
         token: "..",
         name: "dotted",
-        label: ".. (dotted)",
         detail: "Dotted line (no direction)",
         line_style: LineStyle::Dashed,
         head_style: HeadStyle::None,
-        tail_style: HeadStyle::None,
         direction: ArrowDirection::None,
         is_hierarchy_edge: false,
         hierarchy_reversed: false,
@@ -282,11 +263,9 @@ pub struct ArrowEntry {
 #[derive(Debug, Clone, Serialize)]
 pub struct ArrowDefinitionJson {
     pub name: &'static str,
-    pub label: String,
     pub detail: &'static str,
     pub line_style: LineStyle,
     pub head_style: HeadStyle,
-    pub tail_style: HeadStyle,
     pub direction: ArrowDirection,
     pub is_left: bool,
 }
@@ -321,11 +300,9 @@ pub fn build_arrow_registry() -> Vec<ArrowEntry> {
                     canonical_name: format!("{}_right", def.name),
                     definition: ArrowDefinitionJson {
                         name: def.name,
-                        label: def.label.to_string(),
                         detail: def.detail,
                         line_style: def.line_style,
                         head_style: def.head_style,
-                        tail_style: def.tail_style,
                         direction: def.direction,
                         is_left: false,
                     },
@@ -337,19 +314,14 @@ pub fn build_arrow_registry() -> Vec<ArrowEntry> {
                     // This is fine since we only do it once at startup
                     let left_token: &'static str = Box::leak(left_token.into_boxed_str());
                     
-                    // Generate left label by modifying the original
-                    let left_label = def.label.replace(")", " left)");
-                    
                     entries.push(ArrowEntry {
                         token: left_token,
                         canonical_name: format!("{}_left", def.name),
                         definition: ArrowDefinitionJson {
                             name: def.name,
-                            label: left_label,
                             detail: def.detail,
                             line_style: def.line_style,
                             head_style: def.head_style,
-                            tail_style: def.tail_style,
                             direction: ArrowDirection::Left,
                             is_left: true,
                         },
@@ -363,11 +335,9 @@ pub fn build_arrow_registry() -> Vec<ArrowEntry> {
                     canonical_name: format!("{}_left", def.name),
                     definition: ArrowDefinitionJson {
                         name: def.name,
-                        label: def.label.to_string(),
                         detail: def.detail,
                         line_style: def.line_style,
                         head_style: def.head_style,
-                        tail_style: def.tail_style,
                         direction: def.direction,
                         is_left: true,
                     },
@@ -380,11 +350,9 @@ pub fn build_arrow_registry() -> Vec<ArrowEntry> {
                     canonical_name: def.name.to_string(),
                     definition: ArrowDefinitionJson {
                         name: def.name,
-                        label: def.label.to_string(),
                         detail: def.detail,
                         line_style: def.line_style,
                         head_style: def.head_style,
-                        tail_style: def.tail_style,
                         direction: def.direction,
                         is_left: false,
                     },

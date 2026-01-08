@@ -13,7 +13,7 @@
 
 import type * as monaco from "monaco-editor";
 import * as trident_core from "trident-core";
-import { initArrowRegistry, getArrowRegistry, type ArrowEntry } from "./types/arrows";
+import { initArrowRegistry, getArrowRegistry, generateArrowLabel, type ArrowEntry } from "./types/arrows";
 
 export const TRIDENT_ID = "trident";
 
@@ -111,7 +111,7 @@ const SNIPPETS = [
 function getArrowCompletions(): { token: string; label: string; detail: string }[] {
   return getArrowRegistry().map((entry: ArrowEntry) => ({
     token: entry.token,
-    label: `${entry.token} (${entry.name}${entry.is_left ? " left" : ""})`,
+    label: generateArrowLabel(entry.token, entry.name, entry.is_left),
     detail: entry.detail,
   }));
 }

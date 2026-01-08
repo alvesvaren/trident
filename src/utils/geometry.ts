@@ -120,23 +120,28 @@ export function getEdgeMarkers(arrow: string): {
   }
 
   const isLeft = entry.is_left;
-  
-  // For left arrows, the visual direction is reversed
-  // head_style goes on the "from" side (markerStart)
-  // tail_style goes on the "to" side (markerEnd)
-  // For right arrows, it's the opposite
+  const isDiamond = entry.head_style === "diamond_filled" || entry.head_style === "diamond_empty";
   
   let markerStart = "";
   let markerEnd = "";
   
-  if (isLeft) {
-    // Left arrow: head is at the "from" node (markerStart)
-    markerStart = headStyleToMarker(entry.head_style, "start");
-    markerEnd = headStyleToMarker(entry.tail_style, "end");
+  if (isDiamond) {
+    // Diamonds are always at the source (from node)
+    // For right arrows, diamond is at markerStart
+    // For left arrows, diamond is at markerEnd (because direction is reversed)
+    if (isLeft) {
+      markerEnd = headStyleToMarker(entry.head_style, "end");
+    } else {
+      markerStart = headStyleToMarker(entry.head_style, "start");
+    }
   } else {
-    // Right arrow or non-directional: head is at the "to" node (markerEnd)
-    markerEnd = headStyleToMarker(entry.head_style, "end");
-    markerStart = headStyleToMarker(entry.tail_style, "start");
+    // Regular arrows: head_style goes at the "to" end
+    // For left arrows, the visual direction is reversed, so head is at markerStart
+    if (isLeft) {
+      markerStart = headStyleToMarker(entry.head_style, "start");
+    } else {
+      markerEnd = headStyleToMarker(entry.head_style, "end");
+    }
   }
 
   return { markerStart, markerEnd };

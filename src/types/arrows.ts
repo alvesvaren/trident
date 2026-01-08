@@ -19,20 +19,22 @@ export interface ArrowEntry {
   canonical_name: string;
   /** Base name without direction suffix */
   name: string;
-  /** Human-readable label for autocomplete dropdown */
-  label: string;
   /** Detailed description for autocomplete */
   detail: string;
   /** Line style (solid or dashed) */
   line_style: LineStyle;
-  /** Head style at the "to" end */
+  /** Head style at the "to" end (or source for left arrows/diamonds) */
   head_style: HeadStyle;
-  /** Head style at the "from" end (for diamonds) */
-  tail_style: HeadStyle;
   /** Direction of the arrow */
   direction: ArrowDirection;
   /** Whether this is a left arrow variant */
   is_left: boolean;
+}
+
+/** Generate a human-readable label from token and name */
+export function generateArrowLabel(token: string, name: string, isLeft: boolean): string {
+  const suffix = isLeft ? " left" : "";
+  return `${token} (${name}${suffix})`;
 }
 
 /** Cached arrow registry from Rust */

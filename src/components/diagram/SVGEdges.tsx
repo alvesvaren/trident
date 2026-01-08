@@ -17,21 +17,25 @@ export function EdgeDefs() {
   return (
     <>
       {/* Arrowhead for markerEnd - refX at tip so line ends at back of arrow */}
-      <marker id='arrowhead-end' markerWidth='10' markerHeight='7' refX='10' refY='3.5' orient='auto'>
-        <polygon points='0 0, 10 3.5, 0 7' fill='var(--canvas-edge)' />
+      {/* Two lines converging like > character */}
+      <marker id='arrowhead-end' markerWidth='8' markerHeight='6' refX='8' refY='3' orient='auto'>
+        <line x1='0' y1='0' x2='8' y2='3' stroke='var(--canvas-edge)' strokeWidth='1.5' />
+        <line x1='0' y1='6' x2='8' y2='3' stroke='var(--canvas-edge)' strokeWidth='1.5' />
       </marker>
       {/* Arrowhead for markerStart - refX at 0 so arrow appears at line start */}
-      <marker id='arrowhead-start' markerWidth='10' markerHeight='7' refX='0' refY='3.5' orient='auto'>
-        <polygon points='0 3.5, 10 0, 10 7' fill='var(--canvas-edge)' />
+      {/* Two lines converging like < character */}
+      <marker id='arrowhead-start' markerWidth='8' markerHeight='6' refX='0' refY='3' orient='auto'>
+        <line x1='8' y1='0' x2='0' y2='3' stroke='var(--canvas-edge)' strokeWidth='1.5' />
+        <line x1='8' y1='6' x2='0' y2='3' stroke='var(--canvas-edge)' strokeWidth='1.5' />
       </marker>
 
       {/* Triangle (extends) for markerEnd - hollow triangle, line stops at back */}
-      <marker id='triangle-end' markerWidth='12' markerHeight='10' refX='12' refY='5' orient='auto'>
-        <polygon points='0 0, 12 5, 0 10' fill='var(--canvas-marker-fill)' stroke='var(--canvas-edge)' strokeWidth='1.5' />
+      <marker id='triangle-end' markerWidth='10' markerHeight='8' refX='10' refY='4' orient='auto'>
+        <polygon points='0 0, 10 4, 0 8' fill='var(--canvas-marker-fill)' stroke='var(--canvas-edge)' strokeWidth='1.5' />
       </marker>
       {/* Triangle (extends) for markerStart - hollow triangle at line start */}
-      <marker id='triangle-start' markerWidth='12' markerHeight='10' refX='0' refY='5' orient='auto'>
-        <polygon points='0 5, 12 0, 12 10' fill='var(--canvas-marker-fill)' stroke='var(--canvas-edge)' strokeWidth='1.5' />
+      <marker id='triangle-start' markerWidth='10' markerHeight='8' refX='0' refY='4' orient='auto'>
+        <polygon points='0 4, 10 0, 10 8' fill='var(--canvas-marker-fill)' stroke='var(--canvas-edge)' strokeWidth='1.5' />
       </marker>
 
       {/* Filled diamond (composition) for markerStart - appears at source node */}
