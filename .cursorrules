@@ -11,13 +11,13 @@ Add the arrow token and canonical name to `ARROW_REGISTRY`:
 - **Canonical naming convention**:
   - Use `_right` suffix for arrows pointing right (e.g., `A --> B`)
   - Use `_left` suffix for arrows pointing left (e.g., `A <-- B`)
-  - Use descriptive prefixes: `extends_`, `dep_`, `assoc_`, `aggregate`, `compose`
+  - Use descriptive prefixes: `extends_`, `implements_`, `dep_`, `assoc_`, `aggregate`, `compose`
 
 Example:
 ```rust
 pub const ARROW_REGISTRY: &[(&str, &str)] = &[
-    ("<|..", "dep_extends_left"),
-    ("..|>", "dep_extends_right"),
+    ("<|..", "implements_left"),
+    ("..|>", "implements_right"),
     // ... other arrows
 ];
 ```
@@ -30,7 +30,7 @@ Update three locations:
 Add to the `ARROWS` constant array with label and detail:
 ```typescript
 const ARROWS = [
-  { token: "..|>", label: "..|> (dotted extends)", detail: "Dotted inheritance arrow" },
+  { token: "..|>", label: "..|> (implements)", detail: "Implements/realises arrow" },
   // ... other arrows
 ];
 ```
@@ -51,21 +51,21 @@ Add the token pattern to the operator regex:
 
 ### a) `isDashed()` function
 Determine if the arrow should render as a dashed line:
-- Check if arrow name starts with `dep_` (already handled by current implementation)
-- Or add explicit check: `arrow === "dotted" || arrow.startsWith("dep_")`
+- Check if arrow name starts with `dep_` or `implements_` (for dotted arrows)
+- Or add explicit check: `arrow === "dotted" || arrow.startsWith("dep_") || arrow.startsWith("implements_")`
 
 ### b) `getEdgeMarkers()` function
 Determine which SVG markers to use:
 - Check the base arrow name (without `_left`/`_right` suffix)
-- Add cases for triangle markers (`extends` style), arrowhead markers (`assoc`/`dep` style), or diamond markers (`aggregate`/`compose` style)
-- Example: `if (baseArrow === "extends" || baseArrow === "dep_extends")`
+- Add cases for triangle markers (`extends`/`implements` style), arrowhead markers (`assoc`/`dep` style), or diamond markers (`aggregate`/`compose` style)
+- Example: `if (baseArrow === "extends" || baseArrow === "implements")`
 
 ## 4. Layout Logic (`trident-core/src/layout/placement.rs`)
 
 Update `get_edge_direction()` function if the arrow affects hierarchical layout:
 - Add the new arrow canonical names to the appropriate match arm
 - Determine parent-child relationship for hierarchical layout
-- Example: `"extends_right" | "dep_extends_right" => (to, from)`
+- Example: `"extends_right" | "implements_right" => (to, from)`
 
 ## 5. SVG Markers (`src/components/diagram/SVGEdges.tsx`)
 

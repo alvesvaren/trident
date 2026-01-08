@@ -95,8 +95,8 @@ pub struct RelationAst {
 /// Arrow token registry: (token_str, canonical_name)
 /// Longer tokens must come first to avoid partial matches
 pub const ARROW_REGISTRY: &[(&str, &str)] = &[
-    ("<|..", "dep_extends_left"),
-    ("..|>", "dep_extends_right"),
+    ("<|..", "implements_left"),
+    ("..|>", "implements_right"),
     ("<|--", "extends_left"),
     ("--|>", "extends_right"),
     ("..>", "dep_right"),

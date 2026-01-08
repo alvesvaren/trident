@@ -102,7 +102,7 @@ export function SVGEdges({ edges, nodes, dragState }: SVGEdgesProps) {
               y2={end.y}
               stroke='var(--canvas-edge)'
               strokeWidth={1.5}
-              strokeDasharray={isDashed(edge.arrow) ? "5,3" : undefined}
+              strokeDasharray={isDashed(edge.arrow) ? "8,4" : undefined}
               markerEnd={markerEnd}
               markerStart={markerStart}
             />

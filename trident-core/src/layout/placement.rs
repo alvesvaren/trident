@@ -107,8 +107,8 @@ pub fn layout_group_children_graph_driven(
 /// Returns (parent_id, child_id) where parent should be above child.
 fn get_edge_direction(arrow: &str, from: NodeId, to: NodeId) -> (NodeId, NodeId) {
     match arrow {
-        "extends_right" | "dep_extends_right" => (to, from),     // B is parent of A
-        "extends_left" | "dep_extends_left" => (from, to),      // A is parent of B
+        "extends_right" | "implements_right" => (to, from),     // B is parent/interface of A
+        "extends_left" | "implements_left" => (from, to),      // A is parent/interface of B
         "compose" | "aggregate" | "assoc_right" | "dep_right" => (from, to), // A owns/calls B
         "assoc_left" | "dep_left" => (to, from), // B owns/calls A
         _ => (from, to), // Default

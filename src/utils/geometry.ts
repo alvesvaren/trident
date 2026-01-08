@@ -85,7 +85,7 @@ export function isLeftArrow(arrow: string): boolean {
 
 /** Check if the edge should be dashed */
 export function isDashed(arrow: string): boolean {
-  return arrow === "dotted" || arrow.startsWith("dep_");
+  return arrow === "dotted" || arrow.startsWith("dep_") || arrow.startsWith("implements_");
 }
 
 /** Get the marker type for an edge based on arrow type and direction */
@@ -100,7 +100,7 @@ export function getEdgeMarkers(arrow: string): {
   let markerEnd = "";
   let markerStart = "";
 
-  if (baseArrow === "extends" || baseArrow === "dep_extends") {
+  if (baseArrow === "extends" || baseArrow === "implements") {
     if (arrowAtFrom) markerStart = "url(#triangle-start)";
     else markerEnd = "url(#triangle-end)";
   } else if (baseArrow === "assoc" || baseArrow === "dep") {

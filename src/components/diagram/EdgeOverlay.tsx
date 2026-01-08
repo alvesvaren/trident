@@ -176,7 +176,7 @@ export function EdgeOverlay({ edges, nodes, dragState }: EdgeOverlayProps) {
                             y2={end.y}
                             stroke="#888"
                             strokeWidth={1.5}
-                            strokeDasharray={isDashed(edge.arrow) ? "5,3" : undefined}
+                            strokeDasharray={isDashed(edge.arrow) ? "8,4" : undefined}
                             markerEnd={markerEnd}
                             markerStart={markerStart}
                         />
