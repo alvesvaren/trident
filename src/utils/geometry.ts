@@ -111,6 +111,8 @@ function headStyleToMarker(headStyle: string): string {
   switch (headStyle) {
     case "arrow":
       return `url(#arrowhead)`;
+    case "rounded_arrow":
+      return `url(#rounded-arrowhead)`;
     case "triangle":
       return `url(#triangle)`;
     case "diamond_filled":

@@ -108,6 +108,8 @@ pub enum HeadStyle {
     None,
     /// Simple arrowhead (>)
     Arrow,
+    /// Rounded arrowhead (parenthesis-like)
+    RoundedArrow,
     /// Hollow triangle (inheritance/extends)
     Triangle,
     /// Filled diamond (composition)
@@ -164,6 +166,17 @@ pub const ARROW_DEFINITIONS: &[ArrowDefinition] = &[
         detail: "Association arrow",
         line_style: LineStyle::Solid,
         head_style: HeadStyle::Arrow,
+        direction: ArrowDirection::Right,
+        is_hierarchy_edge: true,
+        hierarchy_reversed: false,
+    },
+    // Short association: rounded arrow (parenthesis-like)
+    ArrowDefinition {
+        token: "--)",
+        name: "assoc_short",
+        detail: "Short association arrow (rounded)",
+        line_style: LineStyle::Solid,
+        head_style: HeadStyle::RoundedArrow,
         direction: ArrowDirection::Right,
         is_hierarchy_edge: true,
         hierarchy_reversed: false,
@@ -276,6 +289,8 @@ fn reverse_token(token: &str) -> Option<String> {
     let reversed: String = token.chars().rev().map(|c| match c {
         '>' => '<',
         '<' => '>',
+        ')' => '(',
+        '(' => ')',
         _ => c,
     }).collect();
     

@@ -22,6 +22,10 @@ export function EdgeDefs() {
         <line x1='0' y1='4' x2='7' y2='4' stroke='var(--canvas-edge)' strokeWidth='1' />
       </marker>
 
+      <marker id='rounded-arrowhead' markerWidth='8' markerHeight='8' refX='3' refY='4' orient='auto-start-reverse'>
+        <path d='M 1 1 Q 5 4, 1 7' fill='none' stroke='var(--canvas-edge)' strokeWidth='1' />
+      </marker>
+
       <marker id='triangle' markerWidth='10' markerHeight='9' refX='9' refY='4.5' orient='auto-start-reverse'>
         <polygon points='1 1, 9 4.5, 1 8' fill='var(--canvas-marker-fill)' stroke='var(--canvas-edge)' strokeWidth='1' />
       </marker>

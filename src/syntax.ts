@@ -116,11 +116,33 @@ function getArrowCompletions(): { token: string; label: string; detail: string }
   }));
 }
 
-/** Build the regex pattern for arrow tokenization */
+/** Build regex for arrows that contain parentheses (need special handling) */
+function buildParenArrowRegex(): RegExp {
+  const tokens = getArrowRegistry()
+    .map((e: ArrowEntry) => e.token)
+    .filter(t => t.includes('(') || t.includes(')'));
+  if (tokens.length === 0) return /(?!)/; // Never matches
+  // Sort by length (longest first) for proper matching
+  const sorted = tokens.sort((a, b) => b.length - a.length);
+  const escaped = sorted.map(t => {
+    // Escape special regex characters
+    const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Wrap in word boundaries to ensure we match the full token
+    return escaped;
+  });
+  // Use a non-capturing group and ensure we match the full token
+  return new RegExp(`(?:${escaped.join('|')})`);
+}
+
+/** Build the regex pattern for arrow tokenization (excluding paren arrows) */
 function buildArrowRegex(): RegExp {
-  const tokens = getArrowRegistry().map((e: ArrowEntry) => e.token);
-  // Escape special regex characters and join with |
-  const escaped = tokens.map(t => 
+  const tokens = getArrowRegistry()
+    .map((e: ArrowEntry) => e.token)
+    .filter(t => !t.includes('(') && !t.includes(')'));
+  if (tokens.length === 0) return /(?!)/; // Never matches
+  // Sort by length (longest first) for proper matching
+  const sorted = tokens.sort((a, b) => b.length - a.length);
+  const escaped = sorted.map(t => 
     t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   );
   return new RegExp(escaped.join('|'));
@@ -130,6 +152,7 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
   // Get arrow data from registry
   const arrowTokens = getArrowRegistry().map((e: ArrowEntry) => e.token);
   const arrowRegex = buildArrowRegex();
+  const parenArrowRegex = buildParenArrowRegex();
   const arrowCompletions = getArrowCompletions();
 
   // 1) Register language
@@ -142,16 +165,13 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
     },
     brackets: [
       ["{", "}"],
-      ["(", ")"],
     ],
     autoClosingPairs: [
       { open: "{", close: "}" },
-      { open: "(", close: ")" },
       { open: '"', close: '"' },
     ],
     surroundingPairs: [
       { open: "{", close: "}" },
-      { open: "(", close: ")" },
       { open: '"', close: '"' },
     ],
     folding: {
@@ -185,6 +205,10 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
         // line comment
         [/%%.*$/, "comment"],
 
+        // arrow operators with parentheses (MUST come FIRST to prevent parens from being tokenized separately)
+        // Match arrows like --) and (-- explicitly before anything else can match the parens
+        [parenArrowRegex, "operator"],
+
         // directive (currently only @pos:)
         [/[@]pos:/, "annotation"],
 
@@ -195,9 +219,8 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
         [/[@]width:/, "annotation"],
         [/[@]height:/, "annotation"],
 
-        // braces / parens
+        // braces
         [/[{}]/, "@brackets"],
-        [/[()]/, "@brackets"],
 
         // numbers (for @pos coords)
         [/-?\d+/, "number"],

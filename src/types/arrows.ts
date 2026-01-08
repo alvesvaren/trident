@@ -6,7 +6,7 @@
 export type LineStyle = "solid" | "dashed";
 
 /** Head/marker style for arrow endpoints */
-export type HeadStyle = "none" | "arrow" | "triangle" | "diamond_filled" | "diamond_empty";
+export type HeadStyle = "none" | "arrow" | "rounded_arrow" | "triangle" | "diamond_filled" | "diamond_empty";
 
 /** Direction of an arrow */
 export type ArrowDirection = "right" | "left" | "none";
