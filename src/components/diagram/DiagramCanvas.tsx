@@ -381,7 +381,7 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
     lockIcons.forEach(el => {
       // Remove the parent g element that contains the lock icon
       const parentG = el.closest('g');
-      if (parentG && parentG.children.length === 1) {
+      if (parentG) {
         parentG.remove();
       }
     });
