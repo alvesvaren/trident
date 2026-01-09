@@ -4,7 +4,7 @@
  */
 
 import type { DiagramEdge, DiagramNode, DragState, Bounds } from "../../types/diagram";
-import { getCenter, getEdgePoint, getEdgeMarkers, isDashed, getShape, getOptimalConnectionPoints } from "../../utils/geometry";
+import { getEdgeMarkers, isDashed, getShape, getOptimalConnectionPoints } from "../../utils/geometry";
 /**
  * SVG marker definitions for edge arrows
  * These should be placed in the <defs> section of the parent SVG

@@ -147,42 +147,71 @@ export function getOptimalConnectionPoints(
   const fromCenter = getCenter(fromBounds);
   const toCenter = getCenter(toBounds);
 
-  // Get geometrically optimal points
+  // Get center-to-center connection points
+  const centerStart = getEdgePoint(fromBounds, toCenter.x, toCenter.y, fromShape, 0);
+  const centerEnd = getEdgePoint(toBounds, fromCenter.x, fromCenter.y, toShape, 0);
+
+  // Get geometrically optimal points using continuous optimization
   const fromSegments = getShapeBoundarySegments(fromBounds, fromShape);
   const toSegments = getShapeBoundarySegments(toBounds, toShape);
 
+  // Find standard geometric optimal
   let minDistance = Infinity;
-  let optimalStart = { x: 0, y: 0 };
-  let optimalEnd = { x: 0, y: 0 };
+  let standardOptimal = { start: { x: 0, y: 0 }, end: { x: 0, y: 0 } };
 
-  // Find true geometric optimum
   for (const fromSeg of fromSegments) {
     for (const toSeg of toSegments) {
       const { point1, point2, distance } = getClosestPointsBetweenSegments(fromSeg, toSeg);
       if (distance < minDistance) {
         minDistance = distance;
-        optimalStart = point1;
-        optimalEnd = point2;
+        standardOptimal = { start: point1, end: point2 };
       }
     }
   }
 
-  // Get center-to-center connection points
-  const centerStart = getEdgePoint(fromBounds, toCenter.x, toCenter.y, fromShape, 0);
-  const centerEnd = getEdgePoint(toBounds, fromCenter.x, fromCenter.y, toShape, 0);
+  // Find leftmost and rightmost optimal connections
+  let leftmostOptimal = { start: { x: Infinity, y: 0 }, end: { x: Infinity, y: 0 } };
+  let rightmostOptimal = { start: { x: -Infinity, y: 0 }, end: { x: -Infinity, y: 0 } };
 
-  // Elegant weighted average: 40% geometric optimal + 60% center-based for balanced arrows
+  for (const fromSeg of fromSegments) {
+    for (const toSeg of toSegments) {
+      const { point1, point2, distance } = getClosestPointsBetweenSegments(fromSeg, toSeg);
+      if (distance < minDistance * 1.05) { // Allow slightly longer for variety
+        if (point1.x < leftmostOptimal.start.x) {
+          leftmostOptimal = { start: point1, end: point2 };
+        }
+        if (point1.x > rightmostOptimal.start.x) {
+          rightmostOptimal = { start: point1, end: point2 };
+        }
+      }
+    }
+  }
+
+  // Average the three optimal points for balanced result
+  const optimalStart = {
+    x: (standardOptimal.start.x + leftmostOptimal.start.x + rightmostOptimal.start.x) / 3,
+    y: (standardOptimal.start.y + leftmostOptimal.start.y + rightmostOptimal.start.y) / 3
+  };
+
+  const optimalEnd = {
+    x: (standardOptimal.end.x + leftmostOptimal.end.x + rightmostOptimal.end.x) / 3,
+    y: (standardOptimal.end.y + leftmostOptimal.end.y + rightmostOptimal.end.y) / 3
+  };
+
+  // Balanced weighted average: 25% geometric optimal + 75% center-based
   let connectionStart = {
-    x: optimalStart.x * 0.4 + centerStart.x * 0.6,
-    y: optimalStart.y * 0.4 + centerStart.y * 0.6
+    x: optimalStart.x * 0.25 + centerStart.x * 0.75,
+    y: optimalStart.y * 0.25 + centerStart.y * 0.75
   };
 
   let connectionEnd = {
-    x: optimalEnd.x * 0.4 + centerEnd.x * 0.6,
-    y: optimalEnd.y * 0.4 + centerEnd.y * 0.6
+    x: optimalEnd.x * 0.25 + centerEnd.x * 0.75,
+    y: optimalEnd.y * 0.25 + centerEnd.y * 0.75
   };
 
-  // Simple corner snapping: snap if close to corner AND arrow is diagonal enough
+  // No special parallel handling - let the weighted average do its work
+
+  // Smart corner snapping: snap if close to corner AND angle of attack is shallow
   connectionStart = smartCornerSnap(connectionStart, connectionEnd, fromBounds);
   connectionEnd = smartCornerSnap(connectionEnd, connectionStart, toBounds);
 
@@ -227,7 +256,7 @@ interface LineSegment {
   end: { x: number; y: number };
 }
 
-/** Smart corner snapping: snap if close to corner AND arrow is diagonal enough */
+/** Smart corner snapping: snap if close to corner AND arrow is diagonal */
 function smartCornerSnap(
   point: { x: number; y: number },
   otherEnd: { x: number; y: number },
@@ -241,20 +270,20 @@ function smartCornerSnap(
     { x: x, y: y + h } // bottom-left
   ];
 
-  // Check if arrow is diagonal enough (not extremely horizontal/vertical)
-  const dx = Math.abs(otherEnd.x - point.x);
-  const dy = Math.abs(otherEnd.y - point.y);
-  const maxDim = Math.max(dx, dy);
-  const minDim = Math.min(dx, dy);
-  const aspectRatio = maxDim > 0 ? minDim / maxDim : 0;
+  // Snap if close to any corner (within 50% of smaller dimension)
+  const threshold = Math.min(w, h) * 0.5;
 
-  // Only snap if arrow is fairly diagonal (aspect ratio > 0.1)
-  if (aspectRatio < 0.1) {
+  // Check if arrow is diagonal (not extremely horizontal/vertical)
+  const arrowDx = Math.abs(otherEnd.x - point.x);
+  const arrowDy = Math.abs(otherEnd.y - point.y);
+  const maxArrowDim = Math.max(arrowDx, arrowDy);
+  const minArrowDim = Math.min(arrowDx, arrowDy);
+  const arrowAspectRatio = maxArrowDim > 0 ? minArrowDim / maxArrowDim : 0;
+
+  // Only snap if arrow has significant diagonal component
+  if (arrowAspectRatio < 0.4) {
     return point; // Don't snap if arrow is too straight
   }
-
-  // Snap if close to any corner (within 40% of smaller dimension)
-  const threshold = Math.min(w, h) * 0.4;
 
   for (const corner of corners) {
     const distanceToCorner = Math.sqrt(
@@ -269,6 +298,7 @@ function smartCornerSnap(
 
   return point; // No snapping needed
 }
+
 
 /** Get boundary segments that make up a shape's outline */
 function getShapeBoundarySegments(bounds: Bounds, shape: NodeShape): LineSegment[] {
