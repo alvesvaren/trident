@@ -186,8 +186,14 @@ pub fn get_node_size(node: &Node, cfg: &LayoutConfig) -> SizeI {
 }
 
 /// Calculate width based on content for unconstrained nodes
-fn calculate_content_width(_node: &Node, _cfg: &LayoutConfig, min_width: i32) -> i32 {
-    // For now, just use minimum width - focus on vertical layout
+fn calculate_content_width(node: &Node, cfg: &LayoutConfig, min_width: i32) -> i32 {
+    // For shape nodes ("node" kind), maintain square aspect ratio
+    if node.kind == "node" {
+        let height = calculate_content_height(node, &cfg.node_rendering);
+        return height; // Make width equal to height for squares
+    }
+
+    // For class nodes, use minimum width for now
     min_width
 }
 
