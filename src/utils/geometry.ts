@@ -171,43 +171,24 @@ export function getOptimalConnectionPoints(
   const centerStart = getEdgePoint(fromBounds, toCenter.x, toCenter.y, fromShape, 0);
   const centerEnd = getEdgePoint(toBounds, fromCenter.x, fromCenter.y, toShape, 0);
 
-  // Create balanced points that are midway between center and optimal
-  // This gives straight, balanced arrows instead of corner-to-corner extremes
-
-  let blendedStart = {
-    x: (centerStart.x + optimalStart.x) / 2,
-    y: (centerStart.y + optimalStart.y) / 2
+  // Elegant weighted average: 40% geometric optimal + 60% center-based for balanced arrows
+  let connectionStart = {
+    x: optimalStart.x * 0.4 + centerStart.x * 0.6,
+    y: optimalStart.y * 0.4 + centerStart.y * 0.6
   };
 
-  let blendedEnd = {
-    x: (centerEnd.x + optimalEnd.x) / 2,
-    y: (centerEnd.y + optimalEnd.y) / 2
+  let connectionEnd = {
+    x: optimalEnd.x * 0.4 + centerEnd.x * 0.6,
+    y: optimalEnd.y * 0.4 + centerEnd.y * 0.6
   };
 
-  // If the optimal connection would be perfectly straight, blend toward mean center position
-  const optimalDx = Math.abs(optimalEnd.x - optimalStart.x);
-  const optimalDy = Math.abs(optimalEnd.y - optimalStart.y);
-  const straightThreshold = Math.min(fromBounds.w, fromBounds.h, toBounds.w, toBounds.h) * 0.05; // 5% tolerance
-
-  if (optimalDx <= straightThreshold) {
-    // Optimal is perfectly vertical - blend toward average x position from centers
-    const avgX = (fromCenter.x + toCenter.x) / 2;
-    blendedStart.x = (blendedStart.x + avgX) / 2;
-    blendedEnd.x = (blendedEnd.x + avgX) / 2;
-  } else if (optimalDy <= straightThreshold) {
-    // Optimal is perfectly horizontal - blend toward average y position from centers
-    const avgY = (fromCenter.y + toCenter.y) / 2;
-    blendedStart.y = (blendedStart.y + avgY) / 2;
-    blendedEnd.y = (blendedEnd.y + avgY) / 2;
-  }
-
-  // Snap to corners only if it would make the arrow shorter
-  blendedStart = snapToCornerIfShorter(blendedStart, blendedEnd, fromBounds);
-  blendedEnd = snapToCornerIfShorter(blendedEnd, blendedStart, toBounds);
+  // Simple corner snapping: snap if close to corner AND arrow is diagonal enough
+  connectionStart = smartCornerSnap(connectionStart, connectionEnd, fromBounds);
+  connectionEnd = smartCornerSnap(connectionEnd, connectionStart, toBounds);
 
   // Apply offsets if specified
-  let finalStart = blendedStart;
-  let finalEnd = blendedEnd;
+  let finalStart = connectionStart;
+  let finalEnd = connectionEnd;
 
   if (startOffset !== 0) {
     const sdx = finalEnd.x - finalStart.x;
@@ -246,8 +227,8 @@ interface LineSegment {
   end: { x: number; y: number };
 }
 
-/** Snap a point to the nearest corner only if it would make the arrow shorter and the arrow is significantly diagonal */
-function snapToCornerIfShorter(
+/** Smart corner snapping: snap if close to corner AND arrow is diagonal enough */
+function smartCornerSnap(
   point: { x: number; y: number },
   otherEnd: { x: number; y: number },
   bounds: Bounds
@@ -260,47 +241,33 @@ function snapToCornerIfShorter(
     { x: x, y: y + h } // bottom-left
   ];
 
-  // Use 30% of the smaller dimension as the snap threshold
-  const threshold = Math.min(w, h) * 0.3;
-
-  // Current arrow direction - check if it's significantly diagonal
-  const currentDx = Math.abs(otherEnd.x - point.x);
-  const currentDy = Math.abs(otherEnd.y - point.y);
-
-  // If arrow is very horizontal or vertical (one dimension much larger than other), don't snap
-  const maxDim = Math.max(currentDx, currentDy);
-  const minDim = Math.min(currentDx, currentDy);
+  // Check if arrow is diagonal enough (not extremely horizontal/vertical)
+  const dx = Math.abs(otherEnd.x - point.x);
+  const dy = Math.abs(otherEnd.y - point.y);
+  const maxDim = Math.max(dx, dy);
+  const minDim = Math.min(dx, dy);
   const aspectRatio = maxDim > 0 ? minDim / maxDim : 0;
 
-  // Only snap if arrow is fairly diagonal (aspect ratio > 0.1, meaning not extremely horizontal/vertical)
+  // Only snap if arrow is fairly diagonal (aspect ratio > 0.1)
   if (aspectRatio < 0.1) {
-    return point; // Don't snap if arrow is already very straight
+    return point; // Don't snap if arrow is too straight
   }
 
-  const currentLength = Math.sqrt(currentDx * currentDx + currentDy * currentDy);
-
-  let bestCorner = point;
-  let bestLength = currentLength;
+  // Snap if close to any corner (within 40% of smaller dimension)
+  const threshold = Math.min(w, h) * 0.4;
 
   for (const corner of corners) {
-    const dx = point.x - corner.x;
-    const dy = point.y - corner.y;
-    const distanceToCorner = Math.sqrt(dx * dx + dy * dy);
+    const distanceToCorner = Math.sqrt(
+      Math.pow(point.x - corner.x, 2) +
+      Math.pow(point.y - corner.y, 2)
+    );
 
     if (distanceToCorner <= threshold) {
-      // Check if snapping to this corner would make the arrow shorter
-      const snappedDx = otherEnd.x - corner.x;
-      const snappedDy = otherEnd.y - corner.y;
-      const snappedLength = Math.sqrt(snappedDx * snappedDx + snappedDy * snappedDy);
-
-      if (snappedLength < bestLength) {
-        bestCorner = corner;
-        bestLength = snappedLength;
-      }
+      return corner; // Snap to corner
     }
   }
 
-  return bestCorner;
+  return point; // No snapping needed
 }
 
 /** Get boundary segments that make up a shape's outline */
