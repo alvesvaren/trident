@@ -4,7 +4,7 @@
  */
 
 import type { DiagramEdge, DiagramNode, DragState, Bounds } from "../../types/diagram";
-import { getCenter, getEdgePoint, getEdgeMarkers, isDashed, getShape } from "../../utils/geometry";
+import { getEdgeMarkers, isDashed, getShape, getOptimalConnectionPoints } from "../../utils/geometry";
 /**
  * SVG marker definitions for edge arrows
  * These should be placed in the <defs> section of the parent SVG
@@ -78,17 +78,22 @@ export function SVGEdges({ edges, nodes, dragState }: SVGEdgesProps) {
         const fromShape = fromNode ? getShape(fromNode.modifiers) : "rectangle";
         const toShape = toNode ? getShape(toNode.modifiers) : "rectangle";
 
-        const fromCenter = getCenter(fromBounds);
-        const toCenter = getCenter(toBounds);
         const { markerStart, markerEnd } = getEdgeMarkers(edge.arrow);
-        
+
         // Apply offset only at the arrow-head end (where the marker is)
         const ARROW_OFFSET = 5;
         const startOffset = markerStart ? ARROW_OFFSET : 0;
         const endOffset = markerEnd ? ARROW_OFFSET : 0;
-        
-        const start = getEdgePoint(fromBounds, toCenter.x, toCenter.y, fromShape, startOffset);
-        const end = getEdgePoint(toBounds, fromCenter.x, fromCenter.y, toShape, endOffset);
+
+        // Use optimal connection points for shortest arrows
+        const { start, end } = getOptimalConnectionPoints(
+          fromBounds,
+          toBounds,
+          fromShape,
+          toShape,
+          startOffset,
+          endOffset
+        );
 
         const midX = (start.x + end.x) / 2;
         const midY = (start.y + end.y) / 2;
