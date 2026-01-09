@@ -16,6 +16,46 @@ export function getShape(modifiers: string[]): NodeShape {
   return "rectangle";
 }
 
+/** Get the closest point on a node's boundary to a target point */
+export function getClosestBoundaryPoint(bounds: Bounds, targetX: number, targetY: number, shape: NodeShape = "rectangle"): { x: number; y: number } {
+  const { x, y, w, h } = bounds;
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+
+  switch (shape) {
+    case "circle": {
+      // For circles, the closest point is along the radius to the target
+      const radius = Math.min(w, h) / 2;
+      const angle = Math.atan2(targetY - cy, targetX - cx);
+      return {
+        x: cx + radius * Math.cos(angle),
+        y: cy + radius * Math.sin(angle),
+      };
+    }
+
+    case "diamond": {
+      // For diamonds, project onto the diamond shape
+      // Diamond is defined by the intersection of |x-cx| + |y-cy| = max(w,h)/2
+      const dx = targetX - cx;
+      const dy = targetY - cy;
+      const scale = Math.min(w, h) / 2 / Math.max(Math.abs(dx), Math.abs(dy));
+      return {
+        x: cx + dx * scale,
+        y: cy + dy * scale,
+      };
+    }
+
+    case "rectangle":
+    default: {
+      // For rectangles, clamp the target point to the rectangle bounds
+      return {
+        x: Math.max(x, Math.min(x + w, targetX)),
+        y: Math.max(y, Math.min(y + h, targetY)),
+      };
+    }
+  }
+}
+
 /** Calculate intersection point of line from center to target with node shape */
 export function getEdgePoint(bounds: Bounds, targetX: number, targetY: number, shape: NodeShape = "rectangle", offset: number): { x: number; y: number } {
   const cx = bounds.x + bounds.w / 2;
@@ -92,6 +132,268 @@ export function getEdgePoint(bounds: Bounds, targetX: number, targetY: number, s
   }
 
   return intersection;
+}
+
+/** Find balanced connection points that blend optimal geometry with center-to-center aesthetics */
+export function getOptimalConnectionPoints(
+  fromBounds: Bounds,
+  toBounds: Bounds,
+  fromShape: NodeShape = "rectangle",
+  toShape: NodeShape = "rectangle",
+  startOffset: number = 0,
+  endOffset: number = 0
+): { start: { x: number; y: number }; end: { x: number; y: number } } {
+  // Get centers for reference
+  const fromCenter = getCenter(fromBounds);
+  const toCenter = getCenter(toBounds);
+
+  // Get geometrically optimal points
+  const fromSegments = getShapeBoundarySegments(fromBounds, fromShape);
+  const toSegments = getShapeBoundarySegments(toBounds, toShape);
+
+  let minDistance = Infinity;
+  let optimalStart = { x: 0, y: 0 };
+  let optimalEnd = { x: 0, y: 0 };
+
+  // Find true geometric optimum
+  for (const fromSeg of fromSegments) {
+    for (const toSeg of toSegments) {
+      const { point1, point2, distance } = getClosestPointsBetweenSegments(fromSeg, toSeg);
+      if (distance < minDistance) {
+        minDistance = distance;
+        optimalStart = point1;
+        optimalEnd = point2;
+      }
+    }
+  }
+
+  // Get center-to-center connection points
+  const centerStart = getEdgePoint(fromBounds, toCenter.x, toCenter.y, fromShape, 0);
+  const centerEnd = getEdgePoint(toBounds, fromCenter.x, fromCenter.y, toShape, 0);
+
+  // Create balanced points that are midway between center and optimal
+  // This gives straight, balanced arrows instead of corner-to-corner extremes
+
+  let blendedStart = {
+    x: (centerStart.x + optimalStart.x) / 2,
+    y: (centerStart.y + optimalStart.y) / 2
+  };
+
+  let blendedEnd = {
+    x: (centerEnd.x + optimalEnd.x) / 2,
+    y: (centerEnd.y + optimalEnd.y) / 2
+  };
+
+  // If the optimal connection would be perfectly straight, blend toward mean center position
+  const optimalDx = Math.abs(optimalEnd.x - optimalStart.x);
+  const optimalDy = Math.abs(optimalEnd.y - optimalStart.y);
+  const straightThreshold = Math.min(fromBounds.w, fromBounds.h, toBounds.w, toBounds.h) * 0.05; // 5% tolerance
+
+  if (optimalDx <= straightThreshold) {
+    // Optimal is perfectly vertical - blend toward average x position from centers
+    const avgX = (fromCenter.x + toCenter.x) / 2;
+    blendedStart.x = (blendedStart.x + avgX) / 2;
+    blendedEnd.x = (blendedEnd.x + avgX) / 2;
+  } else if (optimalDy <= straightThreshold) {
+    // Optimal is perfectly horizontal - blend toward average y position from centers
+    const avgY = (fromCenter.y + toCenter.y) / 2;
+    blendedStart.y = (blendedStart.y + avgY) / 2;
+    blendedEnd.y = (blendedEnd.y + avgY) / 2;
+  }
+
+  // Snap to corners only if it would make the arrow shorter
+  blendedStart = snapToCornerIfShorter(blendedStart, blendedEnd, fromBounds);
+  blendedEnd = snapToCornerIfShorter(blendedEnd, blendedStart, toBounds);
+
+  // Apply offsets if specified
+  let finalStart = blendedStart;
+  let finalEnd = blendedEnd;
+
+  if (startOffset !== 0) {
+    const sdx = finalEnd.x - finalStart.x;
+    const sdy = finalEnd.y - finalStart.y;
+    const slength = Math.sqrt(sdx * sdx + sdy * sdy);
+    if (slength > 0) {
+      const unitX = sdx / slength;
+      const unitY = sdy / slength;
+      finalStart = {
+        x: finalStart.x + unitX * startOffset,
+        y: finalStart.y + unitY * startOffset,
+      };
+    }
+  }
+
+  if (endOffset !== 0) {
+    const edx = finalStart.x - finalEnd.x;
+    const edy = finalStart.y - finalEnd.y;
+    const elength = Math.sqrt(edx * edx + edy * edy);
+    if (elength > 0) {
+      const unitX = edx / elength;
+      const unitY = edy / elength;
+      finalEnd = {
+        x: finalEnd.x + unitX * endOffset,
+        y: finalEnd.y + unitY * endOffset,
+      };
+    }
+  }
+
+  return { start: finalStart, end: finalEnd };
+}
+
+/** Line segment representation */
+interface LineSegment {
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+}
+
+/** Snap a point to the nearest corner only if it would make the arrow shorter */
+function snapToCornerIfShorter(
+  point: { x: number; y: number },
+  otherEnd: { x: number; y: number },
+  bounds: Bounds
+): { x: number; y: number } {
+  const { x, y, w, h } = bounds;
+  const corners = [
+    { x: x, y: y }, // top-left
+    { x: x + w, y: y }, // top-right
+    { x: x + w, y: y + h }, // bottom-right
+    { x: x, y: y + h } // bottom-left
+  ];
+
+  // Use 30% of the smaller dimension as the snap threshold
+  const threshold = Math.min(w, h) * 0.3;
+
+  // Current distance to other end
+  const currentDx = otherEnd.x - point.x;
+  const currentDy = otherEnd.y - point.y;
+  const currentLength = Math.sqrt(currentDx * currentDx + currentDy * currentDy);
+
+  let bestCorner = point;
+  let bestLength = currentLength;
+
+  for (const corner of corners) {
+    const dx = point.x - corner.x;
+    const dy = point.y - corner.y;
+    const distanceToCorner = Math.sqrt(dx * dx + dy * dy);
+
+    if (distanceToCorner <= threshold) {
+      // Check if snapping to this corner would make the arrow shorter
+      const snappedDx = otherEnd.x - corner.x;
+      const snappedDy = otherEnd.y - corner.y;
+      const snappedLength = Math.sqrt(snappedDx * snappedDx + snappedDy * snappedDy);
+
+      if (snappedLength < bestLength) {
+        bestCorner = corner;
+        bestLength = snappedLength;
+      }
+    }
+  }
+
+  return bestCorner;
+}
+
+/** Get boundary segments that make up a shape's outline */
+function getShapeBoundarySegments(bounds: Bounds, shape: NodeShape): LineSegment[] {
+  const { x, y, w, h } = bounds;
+
+  switch (shape) {
+    case "circle": {
+      // Approximate circle with multiple segments
+      const cx = x + w / 2;
+      const cy = y + h / 2;
+      const radius = Math.min(w, h) / 2;
+      const segments: LineSegment[] = [];
+      const numSegments = 16; // More segments for smoother approximation
+
+      for (let i = 0; i < numSegments; i++) {
+        const angle1 = (i * 2 * Math.PI) / numSegments;
+        const angle2 = ((i + 1) * 2 * Math.PI) / numSegments;
+        segments.push({
+          start: { x: cx + radius * Math.cos(angle1), y: cy + radius * Math.sin(angle1) },
+          end: { x: cx + radius * Math.cos(angle2), y: cy + radius * Math.sin(angle2) }
+        });
+      }
+      return segments;
+    }
+
+    case "diamond": {
+      const cx = x + w / 2;
+      const cy = y + h / 2;
+      return [
+        { start: { x: x, y: cy }, end: { x: cx, y: y } }, // Left to top
+        { start: { x: cx, y: y }, end: { x: x + w, y: cy } }, // Top to right
+        { start: { x: x + w, y: cy }, end: { x: cx, y: y + h } }, // Right to bottom
+        { start: { x: cx, y: y + h }, end: { x: x, y: cy } } // Bottom to left
+      ];
+    }
+
+    case "rectangle":
+    default: {
+      return [
+        { start: { x: x, y: y }, end: { x: x + w, y: y } }, // Top
+        { start: { x: x + w, y: y }, end: { x: x + w, y: y + h } }, // Right
+        { start: { x: x + w, y: y + h }, end: { x: x, y: y + h } }, // Bottom
+        { start: { x: x, y: y + h }, end: { x: x, y: y } } // Left
+      ];
+    }
+  }
+}
+
+/** Find closest points between two line segments */
+function getClosestPointsBetweenSegments(seg1: LineSegment, seg2: LineSegment): {
+  point1: { x: number; y: number };
+  point2: { x: number; y: number };
+  distance: number;
+} {
+  const p1 = seg1.start;
+  const q1 = seg1.end;
+  const p2 = seg2.start;
+  const q2 = seg2.end;
+
+  // Vector representations
+  const d1x = q1.x - p1.x;
+  const d1y = q1.y - p1.y;
+  const d2x = q2.x - p2.x;
+  const d2y = q2.y - p2.y;
+  const r_x = p1.x - p2.x;
+  const r_y = p1.y - p2.y;
+
+  // Coefficients for the system of equations
+  const a = d1x * d1x + d1y * d1y;
+  const b = d1x * d2x + d1y * d2y;
+  const c = d2x * d2x + d2y * d2y;
+  const d = d1x * r_x + d1y * r_y;
+  const e = d2x * r_x + d2y * r_y;
+
+  let s = 0;
+  let t = 0;
+
+  // Solve for the closest points
+  const denom = a * c - b * b;
+  if (Math.abs(denom) > 1e-6) {
+    s = Math.max(0, Math.min(1, (b * e - c * d) / denom));
+    t = Math.max(0, Math.min(1, (a * e - b * d) / denom));
+  } else {
+    // Lines are parallel, pick arbitrary points
+    s = 0;
+    t = Math.max(0, Math.min(1, -e / c));
+  }
+
+  // Calculate the closest points
+  const point1 = {
+    x: p1.x + s * d1x,
+    y: p1.y + s * d1y
+  };
+  const point2 = {
+    x: p2.x + t * d2x,
+    y: p2.y + t * d2y
+  };
+
+  const dx = point2.x - point1.x;
+  const dy = point2.y - point1.y;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+
+  return { point1, point2, distance };
 }
 
 /** Check if arrow points to the "from" node (left arrows) */
