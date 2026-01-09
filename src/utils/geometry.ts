@@ -246,7 +246,7 @@ interface LineSegment {
   end: { x: number; y: number };
 }
 
-/** Snap a point to the nearest corner only if it would make the arrow shorter */
+/** Snap a point to the nearest corner only if it would make the arrow shorter and the arrow is significantly diagonal */
 function snapToCornerIfShorter(
   point: { x: number; y: number },
   otherEnd: { x: number; y: number },
@@ -263,9 +263,20 @@ function snapToCornerIfShorter(
   // Use 30% of the smaller dimension as the snap threshold
   const threshold = Math.min(w, h) * 0.3;
 
-  // Current distance to other end
-  const currentDx = otherEnd.x - point.x;
-  const currentDy = otherEnd.y - point.y;
+  // Current arrow direction - check if it's significantly diagonal
+  const currentDx = Math.abs(otherEnd.x - point.x);
+  const currentDy = Math.abs(otherEnd.y - point.y);
+
+  // If arrow is very horizontal or vertical (one dimension much larger than other), don't snap
+  const maxDim = Math.max(currentDx, currentDy);
+  const minDim = Math.min(currentDx, currentDy);
+  const aspectRatio = maxDim > 0 ? minDim / maxDim : 0;
+
+  // Only snap if arrow is fairly diagonal (aspect ratio > 0.1, meaning not extremely horizontal/vertical)
+  if (aspectRatio < 0.1) {
+    return point; // Don't snap if arrow is already very straight
+  }
+
   const currentLength = Math.sqrt(currentDx * currentDx + currentDy * currentDy);
 
   let bestCorner = point;
