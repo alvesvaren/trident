@@ -316,20 +316,46 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
     // Clone the SVG for export
     const clone = svgRef.current.cloneNode(true) as SVGSVGElement;
 
+    // Remove positioning styles that might interfere with export
+    clone.style.removeProperty("position");
+    clone.style.removeProperty("top");
+    clone.style.removeProperty("left");
+    clone.style.removeProperty("overflow");
+
     // Add XML declaration and namespace
     clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
 
     // Resolve CSS variables to actual color values
     resolveCSSVariables(clone);
 
+    // Set explicit width/height and viewBox starting at 0,0
+    clone.setAttribute("width", String(svgViewport.width));
+    clone.setAttribute("height", String(svgViewport.height));
+    clone.setAttribute("viewBox", `0 0 ${svgViewport.width} ${svgViewport.height}`);
+
     // Set a background
     const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    bg.setAttribute("x", String(svgViewport.x));
-    bg.setAttribute("y", String(svgViewport.y));
+    bg.setAttribute("x", "0");
+    bg.setAttribute("y", "0");
     bg.setAttribute("width", String(svgViewport.width));
     bg.setAttribute("height", String(svgViewport.height));
     bg.setAttribute("fill", exportBgColor);
     clone.insertBefore(bg, clone.firstChild);
+
+    // Since the SVG is now positioned at (0,0) and has explicit dimensions,
+    // we need to translate all content to account for the original viewBox offset
+    const translateGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    translateGroup.setAttribute("transform", `translate(${-svgViewport.x}, ${-svgViewport.y})`);
+
+    // Move all children except the background to the translate group
+    const children = Array.from(clone.children);
+    for (const child of children) {
+      if (child !== bg) {
+        clone.removeChild(child);
+        translateGroup.appendChild(child);
+      }
+    }
+    clone.appendChild(translateGroup);
 
     const svgData = new XMLSerializer().serializeToString(clone);
     const blob = new Blob([svgData], { type: "image/svg+xml" });
@@ -349,19 +375,46 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
 
     // Clone the SVG for export
     const clone = svgRef.current.cloneNode(true) as SVGSVGElement;
+
+    // Remove positioning styles that might interfere with export
+    clone.style.removeProperty("position");
+    clone.style.removeProperty("top");
+    clone.style.removeProperty("left");
+    clone.style.removeProperty("overflow");
+
     clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
 
     // Resolve CSS variables to actual color values
     resolveCSSVariables(clone);
 
+    // Set explicit width/height and viewBox starting at 0,0
+    clone.setAttribute("width", String(svgViewport.width));
+    clone.setAttribute("height", String(svgViewport.height));
+    clone.setAttribute("viewBox", `0 0 ${svgViewport.width} ${svgViewport.height}`);
+
     // Add background
     const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    bg.setAttribute("x", String(svgViewport.x));
-    bg.setAttribute("y", String(svgViewport.y));
+    bg.setAttribute("x", "0");
+    bg.setAttribute("y", "0");
     bg.setAttribute("width", String(svgViewport.width));
     bg.setAttribute("height", String(svgViewport.height));
     bg.setAttribute("fill", exportBgColor);
     clone.insertBefore(bg, clone.firstChild);
+
+    // Since the SVG is now positioned at (0,0) and has explicit dimensions,
+    // we need to translate all content to account for the original viewBox offset
+    const translateGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    translateGroup.setAttribute("transform", `translate(${-svgViewport.x}, ${-svgViewport.y})`);
+
+    // Move all children except the background to the translate group
+    const children = Array.from(clone.children);
+    for (const child of children) {
+      if (child !== bg) {
+        clone.removeChild(child);
+        translateGroup.appendChild(child);
+      }
+    }
+    clone.appendChild(translateGroup);
 
     const svgData = new XMLSerializer().serializeToString(clone);
     const svgBase64 = btoa(unescape(encodeURIComponent(svgData)));
@@ -377,8 +430,7 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
       if (!ctx) return;
 
       ctx.scale(scale, scale);
-      ctx.translate(-svgViewport.x, -svgViewport.y);
-      ctx.drawImage(img, svgViewport.x, svgViewport.y, svgViewport.width, svgViewport.height);
+      ctx.drawImage(img, 0, 0, svgViewport.width, svgViewport.height);
 
       canvas.toBlob(blob => {
         if (!blob) return;
