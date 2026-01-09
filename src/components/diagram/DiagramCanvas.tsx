@@ -310,71 +310,12 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
     });
   }, []);
 
-  const exportSVG = useCallback(() => {
-    if (!svgRef.current) return;
-
-    // Clone the SVG for export
-    const clone = svgRef.current.cloneNode(true) as SVGSVGElement;
-
-    // Remove positioning styles that might interfere with export
-    clone.style.removeProperty("position");
-    clone.style.removeProperty("top");
-    clone.style.removeProperty("left");
-    clone.style.removeProperty("overflow");
-
-    // Add XML declaration and namespace
-    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-
-    // Resolve CSS variables to actual color values
-    resolveCSSVariables(clone);
-
-    // Set explicit width/height and viewBox starting at 0,0
-    clone.setAttribute("width", String(svgViewport.width));
-    clone.setAttribute("height", String(svgViewport.height));
-    clone.setAttribute("viewBox", `0 0 ${svgViewport.width} ${svgViewport.height}`);
-
-    // Set a background
-    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    bg.setAttribute("x", "0");
-    bg.setAttribute("y", "0");
-    bg.setAttribute("width", String(svgViewport.width));
-    bg.setAttribute("height", String(svgViewport.height));
-    bg.setAttribute("fill", exportBgColor);
-    clone.insertBefore(bg, clone.firstChild);
-
-    // Since the SVG is now positioned at (0,0) and has explicit dimensions,
-    // we need to translate all content to account for the original viewBox offset
-    const translateGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    translateGroup.setAttribute("transform", `translate(${-svgViewport.x}, ${-svgViewport.y})`);
-
-    // Move all children except the background to the translate group
-    const children = Array.from(clone.children);
-    for (const child of children) {
-      if (child !== bg) {
-        clone.removeChild(child);
-        translateGroup.appendChild(child);
-      }
-    }
-    clone.appendChild(translateGroup);
-
-    const svgData = new XMLSerializer().serializeToString(clone);
-    const blob = new Blob([svgData], { type: "image/svg+xml" });
-    const url = URL.createObjectURL(blob);
-
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "diagram.svg";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }, [svgViewport, resolveCSSVariables, exportBgColor]);
-
-  const exportPNG = useCallback(async () => {
-    if (!svgRef.current) return;
-
-    // Clone the SVG for export
-    const clone = svgRef.current.cloneNode(true) as SVGSVGElement;
+  /**
+   * Prepare an SVG clone for export by normalizing coordinates and removing positioning.
+   */
+  const prepareSVGForExport = useCallback((originalSvg: SVGSVGElement) => {
+    // Clone the SVG
+    const clone = originalSvg.cloneNode(true) as SVGSVGElement;
 
     // Remove positioning styles that might interfere with export
     clone.style.removeProperty("position");
@@ -382,6 +323,7 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
     clone.style.removeProperty("left");
     clone.style.removeProperty("overflow");
 
+    // Add namespace
     clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
 
     // Resolve CSS variables to actual color values
@@ -401,8 +343,7 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
     bg.setAttribute("fill", exportBgColor);
     clone.insertBefore(bg, clone.firstChild);
 
-    // Since the SVG is now positioned at (0,0) and has explicit dimensions,
-    // we need to translate all content to account for the original viewBox offset
+    // Translate all content to account for the original viewBox offset
     const translateGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
     translateGroup.setAttribute("transform", `translate(${-svgViewport.x}, ${-svgViewport.y})`);
 
@@ -415,6 +356,32 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
       }
     }
     clone.appendChild(translateGroup);
+
+    return clone;
+  }, [svgViewport, resolveCSSVariables, exportBgColor]);
+
+  const exportSVG = useCallback(() => {
+    if (!svgRef.current) return;
+
+    const clone = prepareSVGForExport(svgRef.current);
+
+    const svgData = new XMLSerializer().serializeToString(clone);
+    const blob = new Blob([svgData], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "diagram.svg";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [prepareSVGForExport]);
+
+  const exportPNG = useCallback(async () => {
+    if (!svgRef.current) return;
+
+    const clone = prepareSVGForExport(svgRef.current);
 
     const svgData = new XMLSerializer().serializeToString(clone);
     const svgBase64 = btoa(unescape(encodeURIComponent(svgData)));
@@ -445,7 +412,7 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
       }, "image/png");
     };
     img.src = imgSrc;
-  }, [svgViewport, resolveCSSVariables, exportBgColor]);
+  }, [prepareSVGForExport, svgViewport]);
 
   return (
     <div ref={containerRef} className='relative h-full overflow-hidden' style={{ backgroundColor: "var(--canvas-bg)" }}>
