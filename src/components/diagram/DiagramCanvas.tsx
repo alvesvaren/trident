@@ -205,8 +205,6 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
     setTheme(resolvedTheme === "dark" ? "light" : "dark");
   }, [resolvedTheme, setTheme]);
 
-  // Get the current background color for exports
-  const exportBgColor = resolvedTheme === "dark" ? "#171717" : "#f5f5f5";
 
   // Calculate SVG viewport with support for negative coordinates
   const svgViewport = useMemo(() => {
@@ -334,31 +332,36 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
     clone.setAttribute("height", String(svgViewport.height));
     clone.setAttribute("viewBox", `0 0 ${svgViewport.width} ${svgViewport.height}`);
 
-    // Add background
-    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    bg.setAttribute("x", "0");
-    bg.setAttribute("y", "0");
-    bg.setAttribute("width", String(svgViewport.width));
-    bg.setAttribute("height", String(svgViewport.height));
-    bg.setAttribute("fill", exportBgColor);
-    clone.insertBefore(bg, clone.firstChild);
+    // Remove interactive elements that shouldn't appear in exports
+    const interactiveElements = clone.querySelectorAll('.resize-handles, .edge-sensor');
+    interactiveElements.forEach(el => el.remove());
+
+    // Remove lock icons (they have specific structure)
+    const lockIcons = clone.querySelectorAll('svg[width="12"][height="12"]');
+    lockIcons.forEach(el => {
+      // Remove the parent g element that contains the lock icon
+      const parentG = el.closest('g');
+      if (parentG && parentG.children.length === 1) {
+        parentG.remove();
+      }
+    });
+
+    // For transparent background, don't add any background rect
 
     // Translate all content to account for the original viewBox offset
     const translateGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
     translateGroup.setAttribute("transform", `translate(${-svgViewport.x}, ${-svgViewport.y})`);
 
-    // Move all children except the background to the translate group
+    // Move all children to the translate group
     const children = Array.from(clone.children);
     for (const child of children) {
-      if (child !== bg) {
-        clone.removeChild(child);
-        translateGroup.appendChild(child);
-      }
+      clone.removeChild(child);
+      translateGroup.appendChild(child);
     }
     clone.appendChild(translateGroup);
 
     return clone;
-  }, [svgViewport, resolveCSSVariables, exportBgColor]);
+  }, [svgViewport, resolveCSSVariables]);
 
   const exportSVG = useCallback(() => {
     if (!svgRef.current) return;
