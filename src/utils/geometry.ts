@@ -55,13 +55,16 @@ export function getEdgePoint(
 
   if (dx === 0 && dy === 0) return start;
 
+  const cx = bounds.x + bounds.w / 2;
+  const cy = bounds.y + bounds.h / 2;
+
   let intersection: { x: number; y: number };
 
   if (shape === "circle") {
     const angle = Math.atan2(dy, dx);
     intersection = {
-      x: (source?.x ?? (bounds.x + bounds.w / 2)) + (bounds.w / 2) * Math.cos(angle),
-      y: (source?.y ?? (bounds.y + bounds.h / 2)) + (bounds.h / 2) * Math.sin(angle),
+      x: cx + (bounds.w / 2) * Math.cos(angle),
+      y: cy + (bounds.h / 2) * Math.sin(angle),
     };
   } else if (shape === "diamond") {
     const t = 1 / ((2 * Math.abs(dx)) / bounds.w + (2 * Math.abs(dy)) / bounds.h);
@@ -69,15 +72,20 @@ export function getEdgePoint(
   } else {
     const halfW = bounds.w / 2;
     const halfH = bounds.h / 2;
-    const cx = bounds.x + halfW;
-    const cy = bounds.y + halfH;
     
-    let t = Infinity;
-    if (dx > 0) t = Math.min(t, (cx + halfW - start.x) / dx);
-    if (dx < 0) t = Math.min(t, (cx - halfW - start.x) / dx);
-    if (dy > 0) t = Math.min(t, (cy + halfH - start.y) / dy);
-    if (dy < 0) t = Math.min(t, (cy - halfH - start.y) / dy);
+    let tx = Infinity;
+    if (dx > 0) tx = (cx + halfW - start.x) / dx;
+    else if (dx < 0) tx = (cx - halfW - start.x) / dx;
+
+    let ty = Infinity;
+    if (dy > 0) ty = (cy + halfH - start.y) / dy;
+    else if (dy < 0) ty = (cy - halfH - start.y) / dy;
+
+    const t = Math.min(tx, ty);
     
+    // Safety check for ray outside or parallel
+    if (t === Infinity || t < 0) return start;
+
     intersection = { x: start.x + dx * t, y: start.y + dy * t };
   }
 
@@ -106,8 +114,40 @@ export function getOptimalConnectionPoints(
   const toCenter = getCenter(toBounds);
 
   // 1. Get spine-based target points for both nodes
-  const targetA = getTargetPoint(fromBounds, toCenter, fromShape);
-  const targetB = getTargetPoint(toBounds, fromCenter, toShape);
+  let targetA = getTargetPoint(fromBounds, toCenter, fromShape);
+  let targetB = getTargetPoint(toBounds, fromCenter, toShape);
+
+  // Fix "overshoot" inversion when both nodes have spines in the same direction
+  if (fromShape === "rectangle" && toShape === "rectangle") {
+    const isHorizA = fromBounds.w > fromBounds.h;
+    const isHorizB = toBounds.w > toBounds.h;
+
+    if (isHorizA && isHorizB) {
+      const dxBefore = toCenter.x - fromCenter.x;
+      const dxAfter = targetB.x - targetA.x;
+      if (dxBefore * dxAfter <= 0) {
+        // They crossed or are perfectly aligned. Use a shared X in the overlap.
+        const intersectMin = Math.max(fromCenter.x - fromBounds.w * 0.3, toCenter.x - toBounds.w * 0.3);
+        const intersectMax = Math.min(fromCenter.x + fromBounds.w * 0.3, toCenter.x + toBounds.w * 0.3);
+        const sharedX = (intersectMin + intersectMax) / 2;
+        // Blend shared X with node centers for a "slight tilt"
+        targetA.x = sharedX * 0.8 + fromCenter.x * 0.2;
+        targetB.x = sharedX * 0.8 + toCenter.x * 0.2;
+      }
+    } else if (!isHorizA && !isHorizB) {
+      const dyBefore = toCenter.y - fromCenter.y;
+      const dyAfter = targetB.y - targetA.y;
+      if (dyBefore * dyAfter <= 0) {
+        // They crossed or are perfectly aligned. Use a shared Y in the overlap.
+        const intersectMin = Math.max(fromCenter.y - fromBounds.h * 0.3, toCenter.y - toBounds.h * 0.3);
+        const intersectMax = Math.min(fromCenter.y + fromBounds.h * 0.3, toCenter.y + toBounds.h * 0.3);
+        const sharedY = (intersectMin + intersectMax) / 2;
+        // Blend shared Y with node centers for a "slight tilt"
+        targetA.y = sharedY * 0.8 + fromCenter.y * 0.2;
+        targetB.y = sharedY * 0.8 + toCenter.y * 0.2;
+      }
+    }
+  }
 
   // 2. Find boundary intersections for the line between targets
   let pA = getEdgePoint(fromBounds, targetB.x, targetB.y, fromShape, 0, targetA);
@@ -134,7 +174,6 @@ export function getOptimalConnectionPoints(
         start = { x: start.x + (dx / len) * startOffset, y: start.y + (dy / len) * startOffset };
       }
       if (endOffset !== 0) {
-        // Offset is applied by pulling the endpoint back towards the start
         end = { x: end.x - (dx / len) * endOffset, y: end.y - (dy / len) * endOffset };
       }
     }
@@ -154,19 +193,22 @@ function smartCornerSnap(
     { x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }
   ];
 
-  // Ugly check: don't snap if it's almost perpendicular to an axis
   const dx = Math.abs(target.x - point.x);
   const dy = Math.abs(target.y - point.y);
   const aspectRatio = Math.max(dx, dy) > 0 ? Math.min(dx, dy) / Math.max(dx, dy) : 0;
 
   if (aspectRatio < 0.4) return point;
 
-  // "Shorter that way" check: only snap if corner is closer to target than current intersection
   const currentDistSq = Math.pow(target.x - point.x, 2) + Math.pow(target.y - point.y, 2);
   let bestPoint = point;
   let minDistSq = currentDistSq;
 
+  const snapThreshold = Math.min(w, h) * 0.15;
+
   for (const corner of corners) {
+    const distToCornerSq = Math.pow(point.x - corner.x, 2) + Math.pow(point.y - corner.y, 2);
+    if (distToCornerSq > snapThreshold * snapThreshold) continue;
+
     const cornerDistSq = Math.pow(target.x - corner.x, 2) + Math.pow(target.y - corner.y, 2);
     if (cornerDistSq < minDistSq) {
       minDistSq = cornerDistSq;
