@@ -1,6 +1,6 @@
 import { useCallback, useRef, useMemo, useState, useEffect } from "react";
 import { TransformWrapper, TransformComponent, useControls } from "react-zoom-pan-pinch";
-import { ZoomIn, ZoomOut, RotateCcw, Download, Image, Home, Focus, Maximize2, Minimize2, Sun, Moon } from "lucide-react";
+import { ZoomIn, ZoomOut, RotateCcw, Download, Image, Home, Focus, Maximize2, Minimize2, Sun, Moon, ChevronDown } from "lucide-react";
 import * as trident_core from "trident-core";
 import type { DiagramOutput } from "../../types/diagram";
 import { useDiagramDrag } from "../../hooks/useDiagramDrag";
@@ -21,16 +21,19 @@ interface DiagramCanvasProps {
 
 interface ZoomControlsProps {
   onExportSVG: () => void;
-  onExportPNG: () => void;
+  onExportPNG: (scale?: number) => void;
+  pngScale: number;
+  onPngScaleChange: (scale: number) => void;
   containerRef: React.RefObject<HTMLDivElement | null>;
   svgViewport: { x: number; y: number; width: number; height: number };
   resolvedTheme: "light" | "dark";
   onToggleTheme: () => void;
 }
 
-function ZoomControls({ onExportSVG, onExportPNG, containerRef, svgViewport, resolvedTheme, onToggleTheme }: ZoomControlsProps) {
+function ZoomControls({ onExportSVG, onExportPNG, pngScale, onPngScaleChange, containerRef, svgViewport, resolvedTheme, onToggleTheme }: ZoomControlsProps) {
   const { zoomIn, zoomOut, resetTransform, centerView, setTransform } = useControls();
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isPngDropdownOpen, setIsPngDropdownOpen] = useState(false);
 
   // Listen for fullscreen changes
   useEffect(() => {
@@ -153,18 +156,54 @@ function ZoomControls({ onExportSVG, onExportPNG, containerRef, svgViewport, res
       >
         <Download size={16} />
       </button>
-      <button
-        onClick={onExportPNG}
-        className='p-2 rounded transition-colors'
-        style={{
-          backgroundColor: "var(--control-bg)",
-          border: "1px solid var(--control-border)",
-          color: "var(--control-text)",
-        }}
-        title='Export as PNG'
-      >
-        <Image size={16} />
-      </button>
+      <div className='relative'>
+        <button
+          onClick={() => setIsPngDropdownOpen(!isPngDropdownOpen)}
+          className='p-2 rounded transition-colors flex items-center gap-1'
+          style={{
+            backgroundColor: "var(--control-bg)",
+            border: "1px solid var(--control-border)",
+            color: "var(--control-text)",
+          }}
+          title={`Export as PNG (${pngScale}x resolution)`}
+        >
+          <Image size={16} />
+          <span className='text-xs'>{pngScale}x</span>
+          <ChevronDown size={12} />
+        </button>
+        {isPngDropdownOpen && (
+          <>
+            <div
+              className='fixed inset-0 z-10'
+              onClick={() => setIsPngDropdownOpen(false)}
+            />
+            <div
+              className='absolute top-full mt-1 right-0 z-20 py-1 rounded shadow-lg min-w-20'
+              style={{
+                backgroundColor: "var(--control-bg)",
+                border: "1px solid var(--control-border)",
+              }}
+            >
+              {[1, 2, 5].map((scale) => (
+                <button
+                  key={scale}
+                  onClick={() => {
+                    onPngScaleChange(scale);
+                    onExportPNG(scale);
+                    setIsPngDropdownOpen(false);
+                  }}
+                  className='w-full px-3 py-1 text-left hover:opacity-80 transition-opacity'
+                  style={{
+                    color: "var(--control-text)",
+                  }}
+                >
+                  {scale}x
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
       <div className='w-px mx-1' style={{ backgroundColor: "var(--control-border)" }} />
       <button
         onClick={handleFullscreen}
@@ -200,6 +239,7 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
   const containerRef = useRef<HTMLDivElement>(null);
   const { resolvedTheme, setTheme } = useTheme();
   const { dragState, scaleRef, startNodeDrag, startGroupDrag, startNodeResize } = useDiagramDrag({ code, onCodeChange, editorRef });
+  const [pngScale, setPngScale] = useState<number>(2);
 
   const toggleTheme = useCallback(() => {
     setTheme(resolvedTheme === "dark" ? "light" : "dark");
@@ -381,8 +421,10 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
     URL.revokeObjectURL(url);
   }, [prepareSVGForExport]);
 
-  const exportPNG = useCallback(async () => {
+  const exportPNG = useCallback(async (scaleOverride?: number) => {
     if (!svgRef.current) return;
+
+    const scale = scaleOverride ?? pngScale;
 
     const clone = prepareSVGForExport(svgRef.current);
 
@@ -393,7 +435,6 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
     const img = new window.Image();
     img.onload = () => {
       const canvas = document.createElement("canvas");
-      const scale = 2; // 2x resolution for crisp export
       canvas.width = svgViewport.width * scale;
       canvas.height = svgViewport.height * scale;
       const ctx = canvas.getContext("2d");
@@ -407,7 +448,7 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = "diagram.png";
+        link.download = `diagram-${scale}x.png`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -415,7 +456,7 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
       }, "image/png");
     };
     img.src = imgSrc;
-  }, [prepareSVGForExport, svgViewport]);
+  }, [prepareSVGForExport, svgViewport, pngScale]);
 
   return (
     <div ref={containerRef} className='relative h-full overflow-hidden' style={{ backgroundColor: "var(--canvas-bg)" }}>
@@ -433,6 +474,8 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
         <ZoomControls
           onExportSVG={exportSVG}
           onExportPNG={exportPNG}
+          pngScale={pngScale}
+          onPngScaleChange={setPngScale}
           containerRef={containerRef}
           svgViewport={svgViewport}
           resolvedTheme={resolvedTheme}
