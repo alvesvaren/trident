@@ -103,23 +103,20 @@ export function DiagramNode({ node, x, y, onMouseDown, onUnlock }: DiagramNodePr
                 )}
             </div>
 
-            {/* Body lines */}
-            {node.body_lines.map((line, i) => {
-                // Check if line is a separator (--- or similar)
-                const isSeparator = /^\s*-{3,}\s*$/.test(line);
-                
-                if (isSeparator) {
-                    return (
-                        <div key={i} className="border-b border-neutral-700 my-1" />
-                    );
-                }
-                
-                return (
+            {/* Body content - simplified for now */}
+            {node.text_elements
+                .filter(el => el.type === "BodyText")
+                .slice(0, 3) // Show first 3 body lines
+                .map((el, i) => (
                     <div key={i} className="text-[11px] text-neutral-400">
-                        {line}
+                        {el.data.text}
                     </div>
-                );
-            })}
+                ))}
+            {node.text_elements.filter(el => el.type === "BodyText").length > 3 && (
+                <div className="text-[11px] text-neutral-500 italic">
+                    ... and {node.text_elements.filter(el => el.type === "BodyText").length - 3} more lines
+                </div>
+            )}
         </div>
     );
 }

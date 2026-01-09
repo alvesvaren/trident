@@ -205,8 +205,6 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
     setTheme(resolvedTheme === "dark" ? "light" : "dark");
   }, [resolvedTheme, setTheme]);
 
-  // Get the current background color for exports
-  const exportBgColor = resolvedTheme === "dark" ? "#171717" : "#f5f5f5";
 
   // Calculate SVG viewport with support for negative coordinates
   const svgViewport = useMemo(() => {
@@ -310,26 +308,65 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
     });
   }, []);
 
-  const exportSVG = useCallback(() => {
-    if (!svgRef.current) return;
+  /**
+   * Prepare an SVG clone for export by normalizing coordinates and removing positioning.
+   */
+  const prepareSVGForExport = useCallback((originalSvg: SVGSVGElement) => {
+    // Clone the SVG
+    const clone = originalSvg.cloneNode(true) as SVGSVGElement;
 
-    // Clone the SVG for export
-    const clone = svgRef.current.cloneNode(true) as SVGSVGElement;
+    // Remove positioning styles that might interfere with export
+    clone.style.removeProperty("position");
+    clone.style.removeProperty("top");
+    clone.style.removeProperty("left");
+    clone.style.removeProperty("overflow");
 
-    // Add XML declaration and namespace
+    // Add namespace
     clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
 
     // Resolve CSS variables to actual color values
     resolveCSSVariables(clone);
 
-    // Set a background
-    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    bg.setAttribute("x", String(svgViewport.x));
-    bg.setAttribute("y", String(svgViewport.y));
-    bg.setAttribute("width", String(svgViewport.width));
-    bg.setAttribute("height", String(svgViewport.height));
-    bg.setAttribute("fill", exportBgColor);
-    clone.insertBefore(bg, clone.firstChild);
+    // Set explicit width/height and viewBox starting at 0,0
+    clone.setAttribute("width", String(svgViewport.width));
+    clone.setAttribute("height", String(svgViewport.height));
+    clone.setAttribute("viewBox", `0 0 ${svgViewport.width} ${svgViewport.height}`);
+
+    // Remove interactive elements that shouldn't appear in exports
+    const interactiveElements = clone.querySelectorAll('.resize-handles, .edge-sensor');
+    interactiveElements.forEach(el => el.remove());
+
+    // Remove lock icons (they have specific structure)
+    const lockIcons = clone.querySelectorAll('svg[width="12"][height="12"]');
+    lockIcons.forEach(el => {
+      // Remove the parent g element that contains the lock icon
+      const parentG = el.closest('g');
+      if (parentG && parentG.children.length === 1) {
+        parentG.remove();
+      }
+    });
+
+    // For transparent background, don't add any background rect
+
+    // Translate all content to account for the original viewBox offset
+    const translateGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    translateGroup.setAttribute("transform", `translate(${-svgViewport.x}, ${-svgViewport.y})`);
+
+    // Move all children to the translate group
+    const children = Array.from(clone.children);
+    for (const child of children) {
+      clone.removeChild(child);
+      translateGroup.appendChild(child);
+    }
+    clone.appendChild(translateGroup);
+
+    return clone;
+  }, [svgViewport, resolveCSSVariables]);
+
+  const exportSVG = useCallback(() => {
+    if (!svgRef.current) return;
+
+    const clone = prepareSVGForExport(svgRef.current);
 
     const svgData = new XMLSerializer().serializeToString(clone);
     const blob = new Blob([svgData], { type: "image/svg+xml" });
@@ -342,26 +379,12 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  }, [svgViewport, resolveCSSVariables, exportBgColor]);
+  }, [prepareSVGForExport]);
 
   const exportPNG = useCallback(async () => {
     if (!svgRef.current) return;
 
-    // Clone the SVG for export
-    const clone = svgRef.current.cloneNode(true) as SVGSVGElement;
-    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-
-    // Resolve CSS variables to actual color values
-    resolveCSSVariables(clone);
-
-    // Add background
-    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    bg.setAttribute("x", String(svgViewport.x));
-    bg.setAttribute("y", String(svgViewport.y));
-    bg.setAttribute("width", String(svgViewport.width));
-    bg.setAttribute("height", String(svgViewport.height));
-    bg.setAttribute("fill", exportBgColor);
-    clone.insertBefore(bg, clone.firstChild);
+    const clone = prepareSVGForExport(svgRef.current);
 
     const svgData = new XMLSerializer().serializeToString(clone);
     const svgBase64 = btoa(unescape(encodeURIComponent(svgData)));
@@ -377,8 +400,7 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
       if (!ctx) return;
 
       ctx.scale(scale, scale);
-      ctx.translate(-svgViewport.x, -svgViewport.y);
-      ctx.drawImage(img, svgViewport.x, svgViewport.y, svgViewport.width, svgViewport.height);
+      ctx.drawImage(img, 0, 0, svgViewport.width, svgViewport.height);
 
       canvas.toBlob(blob => {
         if (!blob) return;
@@ -393,7 +415,7 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
       }, "image/png");
     };
     img.src = imgSrc;
-  }, [svgViewport, resolveCSSVariables, exportBgColor]);
+  }, [prepareSVGForExport, svgViewport]);
 
   return (
     <div ref={containerRef} className='relative h-full overflow-hidden' style={{ backgroundColor: "var(--canvas-bg)" }}>

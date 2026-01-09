@@ -3,9 +3,23 @@
 //! These structs are serialized to JSON and sent to the React frontend
 //! for rendering the diagram.
 
-use crate::layout::RectI;
+use crate::layout::{RectI, NodeRenderingConfig};
 use crate::parser::PointI;
 use serde::Serialize;
+
+/// Type of text element for rendering
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", content = "data")]
+pub enum TextElement {
+    /// Stereotype line (modifiers and kind)
+    Stereotype { text: String, y: i32, font_size: i32 },
+    /// Title line (node label/id)
+    Title { text: String, y: i32, font_size: i32, italic: bool },
+    /// Separator line (---)
+    Separator { x1: i32, y1: i32, x2: i32, y2: i32 },
+    /// Regular body text line
+    BodyText { text: String, y: i32, font_size: i32 },
+}
 
 /// A rendered node ready for React to display
 #[derive(Debug, Clone, Serialize)]
@@ -16,7 +30,10 @@ pub struct NodeOutput {
     /// Modifiers: "abstract", "interface", "enum", "rectangle", "circle", "diamond", etc.
     pub modifiers: Vec<String>,
     pub label: Option<String>,
-    pub body_lines: Vec<String>,
+    /// Structured text elements with calculated positions
+    pub text_elements: Vec<TextElement>,
+    /// Rendering constants for React to use
+    pub rendering_config: NodeRenderingConfig,
     pub bounds: RectI,
     /// Whether this node has a fixed position (@pos in the source)
     pub has_pos: bool,
