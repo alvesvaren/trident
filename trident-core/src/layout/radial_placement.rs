@@ -408,10 +408,13 @@ pub fn layout_nodes_radial(
     
     // Light force-directed refinement: just enough to resolve overlaps and tighten edges
     // Few iterations to preserve initial radial structure
-    const FORCE_ITERATIONS: usize = 8;
+    const FORCE_ITERATIONS: usize = 10;
     for _iter in 0..FORCE_ITERATIONS {
         // Attraction: pull connected nodes together (gently)
-        apply_attraction(&mut positions, &node_sizes, adjacency, &fixed_positions, cfg.gap);
+        apply_attraction(&mut positions, &node_sizes, diagram, adjacency, &fixed_positions, cfg.gap);
+        
+        // Edge repulsion: push nodes away from edge paths (prevents arrows going "behind" nodes)
+        apply_edge_repulsion(&mut positions, &node_sizes, diagram, &fixed_positions, cfg.gap);
         
         // Repulsion: push overlapping nodes apart
         resolve_radial_overlaps(&mut positions, &node_sizes, cfg.gap, &fixed_positions);
@@ -421,6 +424,111 @@ pub fn layout_nodes_radial(
     for &nid in free_nodes {
         if let Some(&pos) = positions.get(&nid) {
             node_local_pos.insert(nid, pos);
+        }
+    }
+}
+
+/// Push nodes away from edge paths to prevent arrows going "behind" nodes.
+fn apply_edge_repulsion(
+    positions: &mut HashMap<NodeId, PointI>,
+    node_sizes: &HashMap<NodeId, SizeI>,
+    diagram: &Diagram,
+    fixed_positions: &HashMap<NodeId, PointI>,
+    gap: i32,
+) {
+    let fixed_set: HashSet<NodeId> = fixed_positions.keys().copied().collect();
+    
+    // Sort nodes for determinism
+    let mut node_list: Vec<NodeId> = positions.keys().copied().collect();
+    node_list.sort_by_key(|nid| nid.0);
+    
+    let mut movements: HashMap<NodeId, (f64, f64)> = HashMap::new();
+    
+    for &nid in &node_list {
+        if fixed_set.contains(&nid) {
+            continue;
+        }
+        
+        let pos = match positions.get(&nid) {
+            Some(p) => *p,
+            None => continue,
+        };
+        let size = node_sizes.get(&nid).copied().unwrap_or(SizeI { w: 100, h: 80 });
+        let node_cx = (pos.x + size.w / 2) as f64;
+        let node_cy = (pos.y + size.h / 2) as f64;
+        let node_radius = ((size.w + size.h) / 4 + gap) as f64;
+        
+        let mut total_dx = 0.0f64;
+        let mut total_dy = 0.0f64;
+        let mut push_count = 0;
+        
+        // Check each edge
+        for edge in &diagram.edges {
+            // Skip if this node is part of the edge
+            if edge.from == nid || edge.to == nid {
+                continue;
+            }
+            
+            let from_pos = match positions.get(&edge.from) {
+                Some(p) => *p,
+                None => continue,
+            };
+            let to_pos = match positions.get(&edge.to) {
+                Some(p) => *p,
+                None => continue,
+            };
+            
+            let from_size = node_sizes.get(&edge.from).copied().unwrap_or(SizeI { w: 100, h: 80 });
+            let to_size = node_sizes.get(&edge.to).copied().unwrap_or(SizeI { w: 100, h: 80 });
+            
+            let ax = (from_pos.x + from_size.w / 2) as f64;
+            let ay = (from_pos.y + from_size.h / 2) as f64;
+            let bx = (to_pos.x + to_size.w / 2) as f64;
+            let by = (to_pos.y + to_size.h / 2) as f64;
+            
+            // Calculate closest point on line segment to node center
+            let abx = bx - ax;
+            let aby = by - ay;
+            let ab_len_sq = abx * abx + aby * aby;
+            
+            if ab_len_sq < 1.0 {
+                continue; // Edge too short
+            }
+            
+            let apx = node_cx - ax;
+            let apy = node_cy - ay;
+            
+            let t = ((apx * abx + apy * aby) / ab_len_sq).clamp(0.0, 1.0);
+            
+            let closest_x = ax + t * abx;
+            let closest_y = ay + t * aby;
+            
+            let dx = node_cx - closest_x;
+            let dy = node_cy - closest_y;
+            let dist = (dx * dx + dy * dy).sqrt();
+            
+            // If node is too close to edge, push it away
+            if dist < node_radius * 2.0 && dist > 0.1 {
+                let push = (node_radius * 2.0 - dist) * 0.3;
+                total_dx += (dx / dist) * push;
+                total_dy += (dy / dist) * push;
+                push_count += 1;
+            }
+        }
+        
+        if push_count > 0 {
+            movements.insert(nid, (total_dx / push_count as f64, total_dy / push_count as f64));
+        }
+    }
+    
+    // Apply movements (sorted for determinism)
+    let mut sorted_movements: Vec<(NodeId, (f64, f64))> = movements.into_iter().collect();
+    sorted_movements.sort_by_key(|(nid, _)| nid.0);
+    
+    for (nid, (dx, dy)) in sorted_movements {
+        if let Some(pos) = positions.get_mut(&nid) {
+            pos.x += dx as i32;
+            pos.y += dy as i32;
         }
     }
 }
@@ -451,15 +559,26 @@ fn apply_anchoring(
 }
 
 /// Apply attraction force: pull connected nodes toward each other.
-/// Nodes connected to fixed (@pos) nodes get extra strong attraction.
+/// Edge weight affects attraction strength (inheritance > composition > association).
 fn apply_attraction(
     positions: &mut HashMap<NodeId, PointI>,
     node_sizes: &HashMap<NodeId, SizeI>,
+    diagram: &Diagram,
     adjacency: &Adjacency,
     fixed_positions: &HashMap<NodeId, PointI>,
     gap: i32,
 ) {
     let fixed_set: HashSet<NodeId> = fixed_positions.keys().copied().collect();
+    
+    // Build edge weight map: (node_a, node_b) -> max weight between them
+    let mut edge_weights: HashMap<(NodeId, NodeId), i32> = HashMap::new();
+    for edge in &diagram.edges {
+        let weight = get_edge_weight(&edge.arrow);
+        let key1 = (edge.from, edge.to);
+        let key2 = (edge.to, edge.from);
+        edge_weights.entry(key1).and_modify(|w| *w = (*w).max(weight)).or_insert(weight);
+        edge_weights.entry(key2).and_modify(|w| *w = (*w).max(weight)).or_insert(weight);
+    }
     
     // Sort for determinism
     let mut node_list: Vec<NodeId> = positions.keys().copied().collect();
@@ -507,8 +626,13 @@ fn apply_attraction(
             
             // Stronger pull if connected to fixed node
             let is_fixed_neighbor = fixed_set.contains(&neighbor_nid);
+            
+            // Use edge weight for attraction strength (inheritance = 100, line = 20)
+            let arrow_weight = *edge_weights.get(&(nid, neighbor_nid)).unwrap_or(&20) as f64;
+            let normalized_weight = arrow_weight / 20.0; // 1.0 for lines, 5.0 for inheritance
+            
             let base_strength = if is_fixed_neighbor { 0.8 } else { 0.4 };
-            let weight = edge_count as f64 * if is_fixed_neighbor { 3.0 } else { 1.0 };
+            let weight = edge_count as f64 * normalized_weight * if is_fixed_neighbor { 3.0 } else { 1.0 };
             
             if dist > ideal_dist * 0.5 {
                 // Pull toward neighbor (proportional to excess distance)
