@@ -21,8 +21,10 @@ mod spatial_grid;
 pub mod adjacency;
 pub mod placement;
 pub mod algorithms;
+pub mod force_placement;
+pub mod radial_placement;
 
-pub use algorithms::{GraphDrivenLayout, layout_graph_driven, GridLayout, layout_grid};
+pub use algorithms::{GraphDrivenLayout, layout_graph_driven, GridLayout, layout_grid, ConstrainedLayout, layout_constrained, RadialLayout, layout_radial};
 
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize)]
@@ -140,10 +142,12 @@ pub trait LayoutStrategy {
 /// # Arguments
 /// * `diagram` - The diagram to layout
 /// * `cfg` - Layout configuration
-/// * `algorithm` - Layout algorithm name: "hierarchical" (default) or "grid"
+/// * `algorithm` - Layout algorithm name: "hierarchical" (default), "grid", "constrained", or "radial"
 pub fn layout_diagram(diagram: &Diagram, cfg: &LayoutConfig, algorithm: &str) -> LayoutResult {
     match algorithm {
         "grid" => layout_grid(diagram, cfg),
+        "constrained" => layout_constrained(diagram, cfg),
+        "radial" => layout_radial(diagram, cfg),
         "hierarchical" | _ => layout_graph_driven(diagram, cfg),
     }
 }
