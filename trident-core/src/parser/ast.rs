@@ -46,8 +46,13 @@ pub fn parse_file(input: &str) -> Result<FileAst, ParseError> {
     // Try to parse @layout: directive at the start
     let layout = p.try_parse_layout()?;
     
-    let items = p.parse_items_until_end()?;
-    Ok(FileAst { layout, items })
+    let diagram_kind = p.try_parse_diagram_header()?;
+    let items = if diagram_kind == DiagramKind::Sequence {
+        p.parse_sequence_items_until_end()?
+    } else {
+        p.parse_items_until_end()?
+    };
+    Ok(FileAst { layout, diagram_kind, items })
 }
 
 struct Parser<'a> {
@@ -153,6 +158,163 @@ impl<'a> Parser<'a> {
         Ok(None)
     }
 
+    /// Try to parse diagram header (classDiagram / sequenceDiagram).
+    /// Skips leading comments and empty lines.
+    fn try_parse_diagram_header(&mut self) -> Result<DiagramKind, ParseError> {
+        let start_i = self.i;
+
+        while !self.eof() && self.is_comment_or_empty_line() {
+            self.advance();
+        }
+
+        if self.eof() {
+            self.i = start_i;
+            return Ok(DiagramKind::Class);
+        }
+
+        let t = self.current_line_wo_comment().trim();
+
+        if t == "classDiagram" || t == "sequenceDiagram" {
+            let kind = if t == "sequenceDiagram" {
+                DiagramKind::Sequence
+            } else {
+                DiagramKind::Class
+            };
+            self.advance();
+            return Ok(kind);
+        }
+
+        self.i = start_i;
+        Ok(DiagramKind::Class)
+    }
+
+    fn parse_sequence_items_until_end(&mut self) -> Result<Vec<Stmt>, ParseError> {
+        let mut items = Vec::new();
+        while !self.eof() {
+            if let Some(stmt) = self.parse_sequence_stmt_or_none()? {
+                items.push(stmt);
+            }
+        }
+        Ok(items)
+    }
+
+    fn parse_sequence_stmt_or_none(&mut self) -> Result<Option<Stmt>, ParseError> {
+        if self.eof() {
+            return Ok(None);
+        }
+
+        let t = self.current_line_wo_comment().trim();
+
+        if self.is_comment_or_empty_line() {
+            if let Some(comment) = self.parse_comment_line() {
+                self.advance();
+                return Ok(Some(Stmt::Comment(comment)));
+            }
+            self.advance();
+            return Ok(None);
+        }
+
+        if t == "sequenceDiagram" {
+            return self.err(1, "duplicate sequenceDiagram header");
+        }
+
+        if starts_with_kw(t, "participant") || starts_with_kw(t, "actor") {
+            let participant = self.parse_participant_line(t)?;
+            self.advance();
+            return Ok(Some(Stmt::Participant(participant)));
+        }
+
+        if starts_with_kw(t, "activate") {
+            let rest = t.strip_prefix("activate").unwrap().trim();
+            let (id_part, after) = take_ident_prefix(rest);
+            let Some(id) = id_part else {
+                return self.err(1, "expected participant name after 'activate'");
+            };
+            if !after.trim().is_empty() {
+                return self.err(1, "unexpected tokens after activate participant");
+            }
+            let start_line = self.line_no();
+            self.advance();
+            return Ok(Some(Stmt::SeqActivate(SeqActivateAst {
+                participant: Ident(id.to_string()),
+                span: Some(Span { start_line, end_line: start_line }),
+            })));
+        }
+
+        if starts_with_kw(t, "deactivate") {
+            let rest = t.strip_prefix("deactivate").unwrap().trim();
+            let (id_part, after) = take_ident_prefix(rest);
+            let Some(id) = id_part else {
+                return self.err(1, "expected participant name after 'deactivate'");
+            };
+            if !after.trim().is_empty() {
+                return self.err(1, "unexpected tokens after deactivate participant");
+            }
+            let start_line = self.line_no();
+            self.advance();
+            return Ok(Some(Stmt::SeqDeactivate(SeqDeactivateAst {
+                participant: Ident(id.to_string()),
+                span: Some(Span { start_line, end_line: start_line }),
+            })));
+        }
+
+        if let Some(msg) = split_sequence_message(t) {
+            let start_line = self.line_no();
+            self.advance();
+            return Ok(Some(Stmt::Message(MessageAst {
+                from: Ident(msg.0.to_string()),
+                arrow: msg.1.to_string(),
+                to: Ident(msg.2.to_string()),
+                label: msg.3,
+                activate_to: msg.4,
+                deactivate_from: msg.5,
+                span: Some(Span { start_line, end_line: start_line }),
+            })));
+        }
+
+        self.err(1, "invalid sequence diagram statement")
+    }
+
+    fn parse_participant_line(&self, line: &str) -> Result<ParticipantAst, ParseError> {
+        let is_actor = starts_with_kw(line, "actor");
+        let rest = if is_actor {
+            line.strip_prefix("actor").unwrap().trim()
+        } else {
+            line.strip_prefix("participant").unwrap().trim()
+        };
+
+        let (id_part, after_id) = take_ident_prefix(rest);
+        let Some(id) = id_part else {
+            return self.err(1, "expected participant identifier");
+        };
+
+        let mut rest = after_id.trim();
+        let mut label: Option<String> = None;
+
+        if rest.starts_with("as") {
+            rest = rest.strip_prefix("as").unwrap().trim();
+            let (label_str, after_label) = parse_string_prefix(rest).map_err(|msg| ParseError {
+                line: self.line_no(),
+                col: 1,
+                msg,
+            })?;
+            label = Some(label_str);
+            rest = after_label.trim();
+        }
+
+        if !rest.is_empty() {
+            return self.err(1, "unexpected tokens in participant declaration");
+        }
+
+        let start_line = self.line_no();
+        Ok(ParticipantAst {
+            is_actor,
+            id: Ident(id.to_string()),
+            label,
+            span: Some(Span { start_line, end_line: start_line }),
+        })
+    }
+
     fn parse_items_until_end(&mut self) -> Result<Vec<Stmt>, ParseError> {
         let mut items = Vec::new();
         while !self.eof() {
@@ -180,7 +342,7 @@ impl<'a> Parser<'a> {
             return Ok(None);
         }
 
-        if t == "classDiagram" {
+        if t == "classDiagram" || t == "sequenceDiagram" {
             self.advance();
             return Ok(None);
         }
@@ -726,6 +888,46 @@ fn split_relation_compact(s: &str) -> Option<(&str, &str, &str)> {
     None
 }
 
+/// Sequence message arrow tokens (longest first).
+const SEQ_MESSAGE_ARROWS: &[(&str, &str, bool, bool)] = &[
+    ("->>+", "seq_message", true, false),
+    ("-->>-", "seq_return", false, true),
+    ("->>", "seq_message", false, false),
+    ("-->>", "seq_return", false, false),
+];
+
+/// Parse a sequence message line like `Alice->>Bob: Hello`
+fn split_sequence_message(s: &str) -> Option<(&str, &str, &str, Option<String>, bool, bool)> {
+    let s = s.trim();
+
+    let (head, label) = match s.split_once(':') {
+        Some((a, b)) => {
+            let l = b.trim();
+            (
+                a.trim(),
+                if l.is_empty() {
+                    None
+                } else {
+                    Some(l.to_string())
+                },
+            )
+        }
+        None => (s, None),
+    };
+
+    for &(token, arrow, activate_to, deactivate_from) in SEQ_MESSAGE_ARROWS {
+        if let Some(pos) = head.find(token) {
+            let left = head[..pos].trim();
+            let right = head[pos + token.len()..].trim();
+            if is_ident(left) && is_ident(right) {
+                return Some((left, arrow, right, label, activate_to, deactivate_from));
+            }
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -815,6 +1017,84 @@ mod tests {
                 assert_eq!(r.arrow, "extends_left");
             }
             _ => panic!("Expected Relation"),
+        }
+    }
+
+    #[test]
+    fn test_parse_sequence_diagram_header() {
+        let input = "sequenceDiagram\nparticipant Alice\n";
+        let ast = parse_file(input).unwrap();
+        assert_eq!(ast.diagram_kind, DiagramKind::Sequence);
+        assert_eq!(ast.items.len(), 1);
+        match &ast.items[0] {
+            Stmt::Participant(p) => {
+                assert_eq!(p.id.0, "Alice");
+                assert!(!p.is_actor);
+            }
+            _ => panic!("Expected Participant"),
+        }
+    }
+
+    #[test]
+    fn test_parse_sequence_message() {
+        let input = "sequenceDiagram\nAlice->>Bob: Hello\n";
+        let ast = parse_file(input).unwrap();
+        match &ast.items[0] {
+            Stmt::Message(m) => {
+                assert_eq!(m.from.0, "Alice");
+                assert_eq!(m.to.0, "Bob");
+                assert_eq!(m.arrow, "seq_message");
+                assert_eq!(m.label.as_deref(), Some("Hello"));
+            }
+            _ => panic!("Expected Message"),
+        }
+    }
+
+    #[test]
+    fn test_parse_sequence_return_message() {
+        let input = "sequenceDiagram\nBob-->>Alice: Hi\n";
+        let ast = parse_file(input).unwrap();
+        match &ast.items[0] {
+            Stmt::Message(m) => {
+                assert_eq!(m.arrow, "seq_return");
+                assert!(m.deactivate_from == false);
+            }
+            _ => panic!("Expected Message"),
+        }
+    }
+
+    #[test]
+    fn test_parse_sequence_participant_with_label() {
+        let input = "sequenceDiagram\nparticipant Alice as \"Alicia\"\n";
+        let ast = parse_file(input).unwrap();
+        match &ast.items[0] {
+            Stmt::Participant(p) => {
+                assert_eq!(p.id.0, "Alice");
+                assert_eq!(p.label.as_deref(), Some("Alicia"));
+            }
+            _ => panic!("Expected Participant"),
+        }
+    }
+
+    #[test]
+    fn test_parse_sequence_activate_deactivate() {
+        let input = "sequenceDiagram\nactivate Bob\ndeactivate Bob\n";
+        let ast = parse_file(input).unwrap();
+        assert!(matches!(&ast.items[0], Stmt::SeqActivate(_)));
+        assert!(matches!(&ast.items[1], Stmt::SeqDeactivate(_)));
+    }
+
+    #[test]
+    fn test_parse_sequence_inline_activate() {
+        let input = "sequenceDiagram\nAlice->>+Bob: Hello\nBob-->>-Alice: Bye\n";
+        let ast = parse_file(input).unwrap();
+        match &ast.items[0] {
+            Stmt::Message(m) => assert!(m.activate_to),
+            _ => panic!("Expected Message"),
+        }
+        match &ast.items[1] {
+            Stmt::Message(m) => assert!(m.deactivate_from),
+            _ => panic!("Expected Message"),
         }
     }
 }

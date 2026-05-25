@@ -8,6 +8,8 @@ import { SVGNode } from "./SVGNode";
 import { SVGShapeNode } from "./SVGShapeNode";
 import { SVGGroup } from "./SVGGroup";
 import { EdgeDefs, SVGEdges } from "./SVGEdges";
+import { SVGParticipant } from "./SVGParticipant";
+import { SVGSequenceEdges, SVGLifelines, SVGActivations } from "./SVGSequence";
 import type { CodeEditorRef } from "../editor/CodeEditor";
 import { useTheme } from "../../hooks/useTheme";
 
@@ -250,6 +252,7 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
   const svgViewport = useMemo(() => {
     const nodes = result.nodes ?? [];
     const groups = result.groups ?? [];
+    const lifelines = result.lifelines ?? [];
 
     if (nodes.length === 0 && groups.length === 0) {
       return { x: 0, y: 0, width: 800, height: 600 };
@@ -274,6 +277,18 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
       maxY = Math.max(maxY, g.bounds.y + g.bounds.h);
     });
 
+    lifelines.forEach(l => {
+      minX = Math.min(minX, l.x);
+      maxY = Math.max(maxY, l.y2);
+    });
+
+    result.edges?.forEach(e => {
+      if (e.y !== undefined) {
+        minY = Math.min(minY, e.y - 20);
+        maxY = Math.max(maxY, e.y + 20);
+      }
+    });
+
     // Add padding
     const padding = 50;
     return {
@@ -282,7 +297,7 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
       width: maxX - minX + padding * 2,
       height: maxY - minY + padding * 2,
     };
-  }, [result.nodes, result.groups]);
+  }, [result.nodes, result.groups, result.lifelines, result.edges]);
 
   // Global keyboard shortcuts for undo/redo (works in fullscreen mode)
   useEffect(() => {
@@ -458,6 +473,8 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
     img.src = imgSrc;
   }, [prepareSVGForExport, svgViewport, pngScale]);
 
+  const isSequence = result.diagram_kind === "sequence";
+
   return (
     <div ref={containerRef} className='relative h-full overflow-hidden' style={{ backgroundColor: "var(--canvas-bg)" }}>
       <TransformWrapper
@@ -505,8 +522,12 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
               </text>
             )}
 
+            {/* Lifelines and activations (sequence diagrams, background) */}
+            {isSequence && result.lifelines && <SVGLifelines lifelines={result.lifelines} />}
+            {isSequence && result.activations && <SVGActivations activations={result.activations} />}
+
             {/* Groups (background layer) */}
-            {result.groups?.map((group, index) => {
+            {!isSequence && result.groups?.map((group, index) => {
               const isDragging = dragState?.type === "group" && dragState.id === group.id;
               const x = isDragging ? dragState!.currentX : group.bounds.x;
               const y = isDragging ? dragState!.currentY : group.bounds.y;
@@ -515,10 +536,26 @@ export function DiagramCanvas({ result, code, onCodeChange, editorRef }: Diagram
             })}
 
             {/* Edges (middle layer) */}
-            {result.nodes && result.edges && <SVGEdges edges={result.edges} nodes={result.nodes} dragState={dragState} />}
+            {isSequence && result.nodes && result.edges && (
+              <SVGSequenceEdges edges={result.edges} nodes={result.nodes} />
+            )}
+            {!isSequence && result.nodes && result.edges && (
+              <SVGEdges edges={result.edges} nodes={result.nodes} dragState={dragState} />
+            )}
 
             {/* Nodes (top layer) */}
             {result.nodes?.map(node => {
+              if (isSequence) {
+                return (
+                  <SVGParticipant
+                    key={node.id}
+                    node={node}
+                    x={node.bounds.x}
+                    y={node.bounds.y}
+                  />
+                );
+              }
+
               const isDragging = dragState?.type === "node" && dragState.id === node.id;
               const x = isDragging ? dragState!.currentX : node.bounds.x;
               const y = isDragging ? dragState!.currentY : node.bounds.y;

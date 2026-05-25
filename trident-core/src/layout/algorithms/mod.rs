@@ -6,6 +6,8 @@
 
 mod graph_driven;
 mod grid;
+mod sequence;
 
 pub use graph_driven::{GraphDrivenLayout, layout_graph_driven};
 pub use grid::{GridLayout, layout_grid};
+pub use sequence::{layout_sequence, SequenceLayoutData};

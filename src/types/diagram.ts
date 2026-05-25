@@ -43,6 +43,22 @@ export interface DiagramEdge {
   to: string;
   arrow: string;
   label: string | null;
+  /** Y coordinate for sequence diagram messages */
+  y?: number;
+}
+
+export interface Lifeline {
+  participant: string;
+  x: number;
+  y1: number;
+  y2: number;
+}
+
+export interface Activation {
+  participant: string;
+  x: number;
+  y: number;
+  h: number;
 }
 
 export interface DiagramGroup {
@@ -60,9 +76,12 @@ export interface ErrorInfo {
 }
 
 export interface DiagramOutput {
+  diagram_kind?: "sequence" | string;
   groups?: DiagramGroup[];
   nodes?: DiagramNode[];
   edges?: DiagramEdge[];
+  lifelines?: Lifeline[];
+  activations?: Activation[];
   /** List of implicit node IDs (for editor info diagnostics) */
   implicit_nodes?: string[];
   error?: ErrorInfo;

@@ -16,5 +16,5 @@ pub use update::{
     update_node_geometry,
 };
 pub use types::*;
-pub use compile::{Diagram, GroupId, NodeId};
+pub use compile::{Diagram, GroupId, NodeId, ActivationSpan};
 pub use rename::{rename_symbol_in_ast, collect_symbols};

@@ -5,17 +5,31 @@
 use wasm_bindgen::prelude::*;
 use serde_json::to_string;
 
-use crate::layout::{layout_diagram, LayoutConfig, RectI};
-use crate::output::{DiagramOutput, NodeOutput, EdgeOutput, GroupOutput, ErrorInfo, TextElement};
+use crate::layout::{layout_diagram, layout_sequence_diagram, LayoutConfig, RectI};
+use crate::output::{DiagramOutput, NodeOutput, EdgeOutput, GroupOutput, ErrorInfo, TextElement, LifelineOutput, ActivationOutput};
 use crate::layout::NodeRenderingConfig;
+
+fn empty_output(error: ErrorInfo) -> DiagramOutput {
+    DiagramOutput {
+        diagram_kind: None,
+        groups: vec![],
+        nodes: vec![],
+        edges: vec![],
+        lifelines: vec![],
+        activations: vec![],
+        implicit_nodes: vec![],
+        error: Some(error),
+    }
+}
 
 /// Generate positioned text elements for a node
 fn generate_text_elements(node: &crate::parser::compile::Node, config: &NodeRenderingConfig) -> Vec<TextElement> {
     let mut elements = Vec::new();
     let mut current_y = config.padding;
 
-    // Add stereotype if present
-    let has_stereotypes = !node.modifiers.is_empty() || node.kind != "class";
+    // Add stereotype if present (skip for participants - they use centered title only)
+    let has_stereotypes = node.kind != "participant"
+        && (!node.modifiers.is_empty() || node.kind != "class");
     if has_stereotypes {
         let stereotypes = format_modifiers(&node.modifiers, &node.kind);
         elements.push(TextElement::Stereotype {
@@ -29,13 +43,22 @@ fn generate_text_elements(node: &crate::parser::compile::Node, config: &NodeRend
     // Add title
     let title = node.label.as_ref().unwrap_or(&node.id.0).clone();
     let is_abstract = node.modifiers.contains(&"abstract".to_string());
+    let title_y = if node.kind == "participant" {
+        current_y + config.line_height / 2 + 4
+    } else {
+        current_y + 12
+    };
     elements.push(TextElement::Title {
         text: title,
-        y: current_y + 12, // Baseline for 12px font
-        font_size: 12,
+        y: title_y,
+        font_size: if node.kind == "participant" { 12 } else { 12 },
         italic: is_abstract,
     });
     current_y += config.line_height;
+
+    if node.kind == "participant" {
+        return elements;
+    }
 
     // Always add separator line below title (centered in its line slot)
     elements.push(TextElement::Separator {
@@ -92,7 +115,7 @@ fn format_modifiers(modifiers: &[String], kind: &str) -> String {
 fn is_separator_line(line: &str) -> bool {
     line.trim().chars().all(|c| c == '-')
 }
-use crate::parser::{self, PointI, get_arrow_registry};
+use crate::parser::{self, PointI, get_arrow_registry, DiagramKind};
 
 #[wasm_bindgen]
 extern "C" {
@@ -111,46 +134,37 @@ pub fn compile_diagram(input: &str) -> String {
         Ok(ast) => ast,
         Err(e) => {
             console_error(&format!("Error parsing file: {:?}", e));
-            let error_output = DiagramOutput {
-                groups: vec![],
-                nodes: vec![],
-                edges: vec![],
-                implicit_nodes: vec![],
-                error: Some(ErrorInfo {
-                    message: e.msg.clone(),
-                    line: e.line,
-                    column: e.col,
-                    end_line: e.line,
-                    end_column: e.col + 1, // Highlight at least one character
-                }),
-            };
-            return serde_json::to_string(&error_output).unwrap();
+            return serde_json::to_string(&empty_output(ErrorInfo {
+                message: e.msg.clone(),
+                line: e.line,
+                column: e.col,
+                end_line: e.line,
+                end_column: e.col + 1,
+            })).unwrap();
         }
     };
     let diagram = match parser::compile(&ast) {
         Ok(diagram) => diagram,
         Err(e) => {
             console_error(&format!("Error compiling file: {:?}", e));
-            let error_output = DiagramOutput {
-                groups: vec![],
-                nodes: vec![],
-                edges: vec![],
-                implicit_nodes: vec![],
-                error: Some(ErrorInfo {
-                    message: e.msg.clone(),
-                    line: e.line,
-                    column: e.col,
-                    end_line: e.line,
-                    end_column: 1000, // Highlight the whole line
-                }),
-            };
-            return serde_json::to_string(&error_output).unwrap();
+            return serde_json::to_string(&empty_output(ErrorInfo {
+                message: e.msg.clone(),
+                line: e.line,
+                column: e.col,
+                end_line: e.line,
+                end_column: 1000,
+            })).unwrap();
         }
     };
     
     // Use the layout algorithm specified in the AST, or default to hierarchical
     let layout_name = ast.layout.as_deref().unwrap_or("hierarchical");
-    let layout_result = layout_diagram(&diagram, &LayoutConfig::default(), layout_name);
+    let (layout_result, seq_data) = if diagram.kind == DiagramKind::Sequence {
+        let (layout, seq) = layout_sequence_diagram(&diagram, &LayoutConfig::default());
+        (layout, Some(seq))
+    } else {
+        (layout_diagram(&diagram, &LayoutConfig::default(), layout_name), None)
+    };
     
     // Build groups (only named groups, skip root and anonymous)
     let groups: Vec<GroupOutput> = diagram.groups.iter()
@@ -192,16 +206,37 @@ pub fn compile_diagram(input: &str) -> String {
     }).collect();
     
     // Build edges
-    let edges: Vec<EdgeOutput> = diagram.edges.iter().map(|e| {
+    let edges: Vec<EdgeOutput> = diagram.edges.iter().enumerate().map(|(i, e)| {
         let from_id = diagram.nodes[e.from.0].id.0.clone();
         let to_id = diagram.nodes[e.to.0].id.0.clone();
+        let y = seq_data.as_ref().and_then(|s| s.message_y.get(&i).copied());
         EdgeOutput {
             from: from_id,
             to: to_id,
             arrow: e.arrow.clone(),
             label: e.label.clone(),
+            y,
         }
     }).collect();
+
+    // Build lifelines and activations for sequence diagrams
+    let lifelines: Vec<LifelineOutput> = seq_data.as_ref().map(|s| {
+        s.lifelines.iter().map(|l| LifelineOutput {
+            participant: diagram.nodes[l.participant.0].id.0.clone(),
+            x: l.x,
+            y1: l.y1,
+            y2: l.y2,
+        }).collect()
+    }).unwrap_or_default();
+
+    let activations: Vec<ActivationOutput> = seq_data.as_ref().map(|s| {
+        s.activations.iter().map(|a| ActivationOutput {
+            participant: diagram.nodes[a.participant.0].id.0.clone(),
+            x: a.x,
+            y: a.y,
+            h: a.h,
+        }).collect()
+    }).unwrap_or_default();
     
     // Collect implicit node IDs for editor diagnostics
     let implicit_nodes: Vec<String> = diagram.nodes.iter()
@@ -209,7 +244,21 @@ pub fn compile_diagram(input: &str) -> String {
         .map(|n| n.id.0.clone())
         .collect();
     
-    let output = DiagramOutput { groups, nodes, edges, implicit_nodes, error: None };
+    let diagram_kind = match diagram.kind {
+        DiagramKind::Sequence => Some("sequence".to_string()),
+        DiagramKind::Class => None,
+    };
+
+    let output = DiagramOutput {
+        diagram_kind,
+        groups,
+        nodes,
+        edges,
+        lifelines,
+        activations,
+        implicit_nodes,
+        error: None,
+    };
     to_string(&output).unwrap()
 }
 

@@ -2,7 +2,7 @@
 //!
 //! Provides functions to find all references to a symbol and rename them.
 
-use crate::parser::{FileAst, GroupAst, NodeAst, RelationAst, Stmt, Ident};
+use crate::parser::{FileAst, GroupAst, NodeAst, RelationAst, MessageAst, Stmt, Ident};
 
 /// A reference to a symbol in the source code.
 #[derive(Debug, Clone)]
@@ -30,6 +30,43 @@ fn find_in_items(items: &[Stmt], symbol: &str, refs: &mut Vec<SymbolReference>) 
             Stmt::Node(node) => find_in_node(node, symbol, refs),
             Stmt::Group(group) => find_in_group(group, symbol, refs),
             Stmt::Relation(rel) => find_in_relation(rel, symbol, refs),
+            Stmt::Participant(p) => {
+                if p.id.0 == symbol {
+                    if let Some(span) = &p.span {
+                        refs.push(SymbolReference {
+                            line: span.start_line,
+                            start_col: 0,
+                            end_col: 0,
+                            text: symbol.to_string(),
+                        });
+                    }
+                }
+            }
+            Stmt::Message(m) => find_in_message(m, symbol, refs),
+            Stmt::SeqActivate(a) => {
+                if a.participant.0 == symbol {
+                    if let Some(span) = &a.span {
+                        refs.push(SymbolReference {
+                            line: span.start_line,
+                            start_col: 0,
+                            end_col: 0,
+                            text: symbol.to_string(),
+                        });
+                    }
+                }
+            }
+            Stmt::SeqDeactivate(d) => {
+                if d.participant.0 == symbol {
+                    if let Some(span) = &d.span {
+                        refs.push(SymbolReference {
+                            line: span.start_line,
+                            start_col: 0,
+                            end_col: 0,
+                            text: symbol.to_string(),
+                        });
+                    }
+                }
+            }
             Stmt::Comment(_) => {}
         }
     }
@@ -89,6 +126,19 @@ fn find_in_relation(rel: &RelationAst, symbol: &str, refs: &mut Vec<SymbolRefere
     }
 }
 
+fn find_in_message(msg: &MessageAst, symbol: &str, refs: &mut Vec<SymbolReference>) {
+    if let Some(span) = &msg.span {
+        if msg.from.0 == symbol || msg.to.0 == symbol {
+            refs.push(SymbolReference {
+                line: span.start_line,
+                start_col: 0,
+                end_col: 0,
+                text: symbol.to_string(),
+            });
+        }
+    }
+}
+
 /// Rename a symbol in the AST, returning the modified AST.
 pub fn rename_symbol_in_ast(ast: &mut FileAst, old_name: &str, new_name: &str) -> bool {
     rename_in_items(&mut ast.items, old_name, new_name)
@@ -113,6 +163,29 @@ fn rename_in_items(items: &mut [Stmt], old_name: &str, new_name: &str) -> bool {
                     found = true;
                 }
             }
+            Stmt::Participant(p) => {
+                if p.id.0 == old_name {
+                    p.id = Ident(new_name.to_string());
+                    found = true;
+                }
+            }
+            Stmt::Message(m) => {
+                if rename_in_message(m, old_name, new_name) {
+                    found = true;
+                }
+            }
+            Stmt::SeqActivate(a) => {
+                if a.participant.0 == old_name {
+                    a.participant = Ident(new_name.to_string());
+                    found = true;
+                }
+            }
+            Stmt::SeqDeactivate(d) => {
+                if d.participant.0 == old_name {
+                    d.participant = Ident(new_name.to_string());
+                    found = true;
+                }
+            }
             Stmt::Comment(_) => {}
         }
     }
@@ -130,36 +203,50 @@ fn rename_in_node(node: &mut NodeAst, old_name: &str, new_name: &str) -> bool {
 
 fn rename_in_group(group: &mut GroupAst, old_name: &str, new_name: &str) -> bool {
     let mut found = false;
-    
-    // Rename group ID if it matches
+
     if let Some(id) = &group.id {
         if id.0 == old_name {
             group.id = Some(Ident(new_name.to_string()));
             found = true;
         }
     }
-    
-    // Recurse into items
+
     if rename_in_items(&mut group.items, old_name, new_name) {
         found = true;
     }
-    
+
     found
 }
 
 fn rename_in_relation(rel: &mut RelationAst, old_name: &str, new_name: &str) -> bool {
     let mut found = false;
-    
+
     if rel.from.0 == old_name {
         rel.from = Ident(new_name.to_string());
         found = true;
     }
-    
+
     if rel.to.0 == old_name {
         rel.to = Ident(new_name.to_string());
         found = true;
     }
-    
+
+    found
+}
+
+fn rename_in_message(msg: &mut MessageAst, old_name: &str, new_name: &str) -> bool {
+    let mut found = false;
+
+    if msg.from.0 == old_name {
+        msg.from = Ident(new_name.to_string());
+        found = true;
+    }
+
+    if msg.to.0 == old_name {
+        msg.to = Ident(new_name.to_string());
+        found = true;
+    }
+
     found
 }
 
@@ -182,7 +269,10 @@ fn collect_from_items(items: &[Stmt], symbols: &mut Vec<String>) {
                 }
                 collect_from_items(&group.items, symbols);
             }
-            Stmt::Relation(_) | Stmt::Comment(_) => {}
+            Stmt::Participant(p) => {
+                symbols.push(p.id.0.clone());
+            }
+            Stmt::Relation(_) | Stmt::Comment(_) | Stmt::Message(_) | Stmt::SeqActivate(_) | Stmt::SeqDeactivate(_) => {}
         }
     }
 }

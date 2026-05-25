@@ -51,6 +51,27 @@ pub struct EdgeOutput {
     /// Arrow type as canonical string (e.g., "extends_left", "assoc_right")
     pub arrow: String,
     pub label: Option<String>,
+    /// Y coordinate for sequence diagram messages
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub y: Option<i32>,
+}
+
+/// A vertical lifeline for sequence diagrams
+#[derive(Debug, Clone, Serialize)]
+pub struct LifelineOutput {
+    pub participant: String,
+    pub x: i32,
+    pub y1: i32,
+    pub y2: i32,
+}
+
+/// An activation box on a sequence diagram lifeline
+#[derive(Debug, Clone, Serialize)]
+pub struct ActivationOutput {
+    pub participant: String,
+    pub x: i32,
+    pub y: i32,
+    pub h: i32,
 }
 
 /// A group container
@@ -73,12 +94,18 @@ pub struct ErrorInfo {
 /// The combined output sent to React
 #[derive(Debug, Clone, Serialize)]
 pub struct DiagramOutput {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagram_kind: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub groups: Vec<GroupOutput>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub nodes: Vec<NodeOutput>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub edges: Vec<EdgeOutput>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub lifelines: Vec<LifelineOutput>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub activations: Vec<ActivationOutput>,
     /// List of implicit node IDs (for editor info diagnostics)
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub implicit_nodes: Vec<String>,

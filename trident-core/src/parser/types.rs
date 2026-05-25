@@ -16,10 +16,18 @@ pub struct CommentAst {
     pub text: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
+pub enum DiagramKind {
+    #[default]
+    Class,
+    Sequence,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct FileAst {
     /// Layout algorithm to use: "hierarchical" (default) or "grid"
     pub layout: Option<String>,
+    pub diagram_kind: DiagramKind,
     pub items: Vec<Stmt>,
 }
 
@@ -29,6 +37,14 @@ pub enum Stmt {
     Node(NodeAst),
     Relation(RelationAst),
     Comment(CommentAst),
+    /// Sequence diagram: participant or actor declaration
+    Participant(ParticipantAst),
+    /// Sequence diagram: message between participants
+    Message(MessageAst),
+    /// Sequence diagram: activate a participant's lifeline
+    SeqActivate(SeqActivateAst),
+    /// Sequence diagram: deactivate a participant's lifeline
+    SeqDeactivate(SeqDeactivateAst),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
@@ -85,6 +101,41 @@ pub struct RelationAst {
     pub to: Ident,
     pub label: Option<String>,
     /// Source span for round-tripping
+    pub span: Option<Span>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ParticipantAst {
+    /// true for `actor`, false for `participant`
+    pub is_actor: bool,
+    pub id: Ident,
+    pub label: Option<String>,
+    pub span: Option<Span>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MessageAst {
+    pub from: Ident,
+    /// Arrow canonical name: "seq_message" or "seq_return"
+    pub arrow: String,
+    pub to: Ident,
+    pub label: Option<String>,
+    /// Inline activate target (`->>+`)
+    pub activate_to: bool,
+    /// Inline deactivate source (`-->>-`)
+    pub deactivate_from: bool,
+    pub span: Option<Span>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SeqActivateAst {
+    pub participant: Ident,
+    pub span: Option<Span>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SeqDeactivateAst {
+    pub participant: Ident,
     pub span: Option<Span>,
 }
 

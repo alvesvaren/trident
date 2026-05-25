@@ -17,6 +17,10 @@ pub fn emit_file(ast: &FileAst) -> String {
     if let Some(layout) = &ast.layout {
         out.push_str(&format!("@layout: {}\n", layout));
     }
+
+    if ast.diagram_kind == DiagramKind::Sequence {
+        out.push_str("sequenceDiagram\n");
+    }
     
     for stmt in &ast.items {
         emit_stmt(stmt, 0, &mut out);
@@ -31,6 +35,16 @@ fn emit_stmt(stmt: &Stmt, indent: usize, out: &mut String) {
         Stmt::Node(n) => emit_node(n, indent, out),
         Stmt::Relation(r) => emit_relation(r, indent, out),
         Stmt::Comment(c) => emit_comment(c, out),
+        Stmt::Participant(p) => emit_participant(p, indent, out),
+        Stmt::Message(m) => emit_message(m, indent, out),
+        Stmt::SeqActivate(a) => {
+            let ind = indent_str(indent);
+            out.push_str(&format!("{}activate {}\n", ind, a.participant.0));
+        }
+        Stmt::SeqDeactivate(d) => {
+            let ind = indent_str(indent);
+            out.push_str(&format!("{}deactivate {}\n", ind, d.participant.0));
+        }
     }
 }
 
@@ -165,6 +179,34 @@ fn emit_pos(pos: &PointI, indent: usize, out: &mut String) {
     out.push_str(&format!("{}@pos: ({}, {})\n", ind, pos.x, pos.y));
 }
 
+fn emit_participant(p: &ParticipantAst, indent: usize, out: &mut String) {
+    let ind = indent_str(indent);
+    let kw = if p.is_actor { "actor" } else { "participant" };
+    let mut line = format!("{}{} {}", ind, kw, p.id.0);
+    if let Some(label) = &p.label {
+        line.push_str(&format!(" as \"{}\"", label));
+    }
+    out.push_str(&line);
+    out.push('\n');
+}
+
+fn emit_message(m: &MessageAst, indent: usize, out: &mut String) {
+    let ind = indent_str(indent);
+    let arrow = match (m.arrow.as_str(), m.activate_to, m.deactivate_from) {
+        ("seq_message", true, _) => "->>+",
+        ("seq_return", _, true) => "-->>-",
+        ("seq_message", _, _) => "->>",
+        ("seq_return", _, _) => "-->>",
+        _ => "->>",
+    };
+    let mut line = format!("{}{}{}{}", ind, m.from.0, arrow, m.to.0);
+    if let Some(label) = &m.label {
+        line.push_str(&format!(": {}", label));
+    }
+    out.push_str(&line);
+    out.push('\n');
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -234,6 +276,17 @@ mod tests {
         let output = emit_file(&ast);
         assert!(output.contains("%% This is a comment"));
         assert!(output.contains("class Foo"));
+    }
+
+    #[test]
+    fn test_roundtrip_sequence() {
+        let input = "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n";
+        let ast = parse_file(input).unwrap();
+        assert_eq!(ast.items.len(), 3);
+        let output = emit_file(&ast);
+        assert!(output.contains("sequenceDiagram"));
+        assert!(output.contains("participant Alice"));
+        assert!(output.contains("Alice->>Bob: Hello"), "output was: {}", output);
     }
 
     #[test]

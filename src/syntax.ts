@@ -34,6 +34,11 @@ const KEYWORDS = [
   "circle",
   "diamond",
   "group",
+  "sequenceDiagram",
+  "participant",
+  "actor",
+  "activate",
+  "deactivate",
   "abstract",
   "static",
   "sealed",
@@ -86,6 +91,18 @@ const SNIPPETS = [
     insertText: "enum ${1:EnumName} {\n\t$0\n}",
     detail: "Enum with body",
     documentation: "Create an enum with values",
+  },
+  {
+    label: "sequenceDiagram",
+    insertText: "sequenceDiagram\nparticipant ${1:Alice}\nparticipant ${2:Bob}\n${1:Alice}->>${2:Bob}: ${3:message}",
+    detail: "Sequence diagram",
+    documentation: "Create a sequence diagram with participants and messages",
+  },
+  {
+    label: "participant",
+    insertText: "participant ${1:Name}",
+    detail: "Sequence participant",
+    documentation: "Declare a participant in a sequence diagram",
   },
   {
     label: "relation",
@@ -185,7 +202,7 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
     modifiers: ["abstract", "static", "sealed", "final", "public", "private", "protected"],
 
     // Other keywords
-    keywords: ["classDiagram", "group"],
+    keywords: ["classDiagram", "sequenceDiagram", "group", "participant", "actor", "activate", "deactivate"],
 
     // Arrow tokens (from registry, already sorted by length)
     arrows: arrowTokens,
@@ -230,7 +247,10 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
         [/\b(abstract|static|sealed|final|public|private|protected)\b/, "keyword.modifier"],
 
         // Other keywords
-        [/\b(classDiagram|group)\b/, "keyword"],
+        [/\b(classDiagram|sequenceDiagram|group|participant|actor|activate|deactivate)\b/, "keyword"],
+
+        // Sequence message arrows
+        [/(-?>>\+?|-?>>-)/, "operator"],
 
         // identifiers
         [/[A-Za-z_][A-Za-z0-9_]*/, "identifier"],

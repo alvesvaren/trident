@@ -14,7 +14,7 @@
 
 use std::collections::HashMap;
 
-use crate::parser::{PointI, Diagram, GroupId, NodeId};
+use crate::parser::{PointI, Diagram, GroupId, NodeId, DiagramKind};
 use serde::Serialize;
 
 mod spatial_grid;
@@ -142,10 +142,19 @@ pub trait LayoutStrategy {
 /// * `cfg` - Layout configuration
 /// * `algorithm` - Layout algorithm name: "hierarchical" (default) or "grid"
 pub fn layout_diagram(diagram: &Diagram, cfg: &LayoutConfig, algorithm: &str) -> LayoutResult {
+    if diagram.kind == DiagramKind::Sequence {
+        let (layout, _) = algorithms::layout_sequence(diagram, cfg);
+        return layout;
+    }
     match algorithm {
         "grid" => layout_grid(diagram, cfg),
         "hierarchical" | _ => layout_graph_driven(diagram, cfg),
     }
+}
+
+/// Layout a sequence diagram and return extra sequence-specific data.
+pub fn layout_sequence_diagram(diagram: &Diagram, cfg: &LayoutConfig) -> (LayoutResult, algorithms::SequenceLayoutData) {
+    algorithms::layout_sequence(diagram, cfg)
 }
 
 /// Layout with a custom strategy.
@@ -166,6 +175,13 @@ use crate::parser::compile::Node;
 /// Get the size for a node, considering kind, custom dimensions, and config defaults.
 /// For unconstrained nodes (no explicit width/height), calculates size based on content.
 pub fn get_node_size(node: &Node, cfg: &LayoutConfig) -> SizeI {
+    if node.kind == "participant" {
+        let text = node.label.as_ref().unwrap_or(&node.id.0);
+        let text_width = text.chars().count() as i32 * cfg.node_rendering.char_width;
+        let w = (text_width + 2 * cfg.node_rendering.padding).max(80);
+        return SizeI { w, h: 36 };
+    }
+
     let default = if node.kind == "node" {
         cfg.node_size
     } else {

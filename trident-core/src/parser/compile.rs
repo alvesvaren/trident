@@ -16,15 +16,32 @@
 
 use std::collections::HashMap;
 
-use crate::parser::{FileAst, GroupAst, Ident, NodeAst, PointI, RelationAst, Stmt};
+use crate::parser::{FileAst, GroupAst, Ident, NodeAst, PointI, RelationAst, Stmt, DiagramKind, ParticipantAst, MessageAst};
 use serde::Serialize;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Diagram {
+    pub kind: DiagramKind,
     pub root: GroupId,
     pub groups: Vec<Group>,
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub activations: Vec<ActivationSpan>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ActivationSpan {
+    pub participant: NodeId,
+    pub start_message: usize,
+    pub end_message: usize,
+}
+
+#[derive(Debug, Clone)]
+struct PendingActivation {
+    pub participant: Ident,
+    pub start_message: usize,
+    pub end_message: usize,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize)]
@@ -95,6 +112,13 @@ impl std::fmt::Display for CompileError {
 impl std::error::Error for CompileError {}
 
 pub fn compile(ast: &FileAst) -> Result<Diagram, CompileError> {
+    match ast.diagram_kind {
+        DiagramKind::Sequence => compile_sequence(ast),
+        DiagramKind::Class => compile_class(ast),
+    }
+}
+
+fn compile_class(ast: &FileAst) -> Result<Diagram, CompileError> {
     let mut ctx = CompileCtx::new();
 
     // Create synthetic root group (order 0)
@@ -106,7 +130,68 @@ pub fn compile(ast: &FileAst) -> Result<Diagram, CompileError> {
     // Resolve edges after all nodes exist
     ctx.resolve_edges()?;
 
-    Ok(ctx.finish())
+    Ok(ctx.finish(DiagramKind::Class))
+}
+
+fn compile_sequence(ast: &FileAst) -> Result<Diagram, CompileError> {
+    let mut ctx = CompileCtx::new_sequence();
+    let root = ctx.new_group(None, None, None);
+
+    let mut message_count = 0usize;
+    let mut activation_starts: HashMap<Ident, Vec<usize>> = HashMap::new();
+
+    for stmt in &ast.items {
+        match stmt {
+            Stmt::Participant(p) => ctx.compile_participant(p, root)?,
+            Stmt::Message(m) => {
+                ctx.collect_message(m, message_count)?;
+                if m.activate_to {
+                    activation_starts
+                        .entry(m.to.clone())
+                        .or_default()
+                        .push(message_count);
+                }
+                if m.deactivate_from {
+                    ctx.close_activation(&m.from, message_count, &mut activation_starts)?;
+                }
+                message_count += 1;
+            }
+            Stmt::SeqActivate(a) => {
+                activation_starts
+                    .entry(a.participant.clone())
+                    .or_default()
+                    .push(message_count);
+            }
+            Stmt::SeqDeactivate(d) => {
+                ctx.close_activation(&d.participant, message_count.saturating_sub(1), &mut activation_starts)?;
+            }
+            Stmt::Comment(_) => {}
+            _ => {
+                return Err(CompileError {
+                    msg: "statement not allowed in sequence diagrams".into(),
+                    line: 1,
+                    col: 1,
+                });
+            }
+        }
+    }
+
+    // Close any remaining open activations at the last message
+    let last_message = message_count.saturating_sub(1);
+    for (ident, starts) in activation_starts {
+        for start in starts {
+            ctx.pending_activations.push(PendingActivation {
+                participant: ident.clone(),
+                start_message: start,
+                end_message: last_message,
+            });
+        }
+    }
+
+    ctx.resolve_edges()?;
+    ctx.resolve_activations();
+
+    Ok(ctx.finish(DiagramKind::Sequence))
 }
 
 struct PendingEdge {
@@ -123,12 +208,14 @@ struct CompileCtx {
     nodes: Vec<Node>,
     edges: Vec<Edge>,
 
-    // For uniqueness checks and resolving
     node_by_ident: HashMap<Ident, NodeId>,
     group_by_ident: HashMap<Ident, GroupId>,
 
     pending_edges: Vec<PendingEdge>,
+    pending_activations: Vec<PendingActivation>,
+    activations: Vec<ActivationSpan>,
 
+    is_sequence: bool,
     next_order: usize,
 }
 
@@ -141,16 +228,27 @@ impl CompileCtx {
             node_by_ident: HashMap::new(),
             group_by_ident: HashMap::new(),
             pending_edges: Vec::new(),
+            pending_activations: Vec::new(),
+            activations: Vec::new(),
+            is_sequence: false,
             next_order: 0,
         }
     }
 
-    fn finish(self) -> Diagram {
+    fn new_sequence() -> Self {
+        let mut ctx = Self::new();
+        ctx.is_sequence = true;
+        ctx
+    }
+
+    fn finish(self, kind: DiagramKind) -> Diagram {
         Diagram {
+            kind,
             root: GroupId(0),
             groups: self.groups,
             nodes: self.nodes,
             edges: self.edges,
+            activations: self.activations,
         }
     }
 
@@ -219,6 +317,73 @@ impl CompileCtx {
                 Stmt::Node(n) => self.compile_node(n, parent_gid)?,
                 Stmt::Relation(r) => self.collect_relation(r)?,
                 Stmt::Comment(_) => {} // Comments don't affect the diagram
+                Stmt::Participant(_) | Stmt::Message(_) | Stmt::SeqActivate(_) | Stmt::SeqDeactivate(_) => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn compile_participant(&mut self, p: &ParticipantAst, parent_gid: GroupId) -> Result<(), CompileError> {
+        if self.node_by_ident.contains_key(&p.id) {
+            return Err(CompileError {
+                msg: format!("duplicate participant: {}", p.id.0),
+                line: p.span.map(|s| s.start_line).unwrap_or(1),
+                col: 1,
+            });
+        }
+
+        let mut modifiers = Vec::new();
+        if p.is_actor {
+            modifiers.push("actor".to_string());
+        }
+
+        let nid = self.new_node(
+            "participant".to_string(),
+            modifiers,
+            p.id.clone(),
+            p.label.clone(),
+            parent_gid,
+            None,
+            None,
+            None,
+            Vec::new(),
+            true,
+        );
+
+        self.node_by_ident.insert(p.id.clone(), nid);
+        self.groups[parent_gid.0].children_nodes.push(nid);
+        Ok(())
+    }
+
+    fn collect_message(&mut self, m: &MessageAst, message_index: usize) -> Result<(), CompileError> {
+        let order = self.alloc_order();
+        self.pending_edges.push(PendingEdge {
+            from: m.from.clone(),
+            to: m.to.clone(),
+            arrow: m.arrow.clone(),
+            label: m.label.clone(),
+            order,
+            line: m.span.map(|s| s.start_line).unwrap_or(1),
+        });
+
+        // Ensure participants exist (implicit from messages)
+        let _ = message_index;
+        Ok(())
+    }
+
+    fn close_activation(
+        &mut self,
+        participant: &Ident,
+        end_message: usize,
+        activation_starts: &mut HashMap<Ident, Vec<usize>>,
+    ) -> Result<(), CompileError> {
+        if let Some(starts) = activation_starts.get_mut(participant) {
+            if let Some(start) = starts.pop() {
+                self.pending_activations.push(PendingActivation {
+                    participant: participant.clone(),
+                    start_message: start,
+                    end_message,
+                });
             }
         }
         Ok(())
@@ -338,9 +503,15 @@ impl CompileCtx {
         }
         
         // Create implicit node in root group (GroupId(0))
+        let (kind, modifiers) = if self.is_sequence {
+            ("participant".to_string(), vec![])
+        } else {
+            ("node".to_string(), vec!["rectangle".to_string()])
+        };
+
         let nid = self.new_node(
-            "node".to_string(),
-            vec!["rectangle".to_string()],
+            kind,
+            modifiers,
             id.clone(),
             None,
             GroupId(0),
@@ -348,7 +519,7 @@ impl CompileCtx {
             None,
             None,
             Vec::new(),
-            false, // implicit
+            false,
         );
         self.node_by_ident.insert(id.clone(), nid);
         self.groups[0].children_nodes.push(nid);
@@ -374,5 +545,56 @@ impl CompileCtx {
         }
 
         Ok(())
+    }
+
+    fn resolve_activations(&mut self) {
+        for pa in self.pending_activations.drain(..) {
+            if let Some(&nid) = self.node_by_ident.get(&pa.participant) {
+                self.activations.push(ActivationSpan {
+                    participant: nid,
+                    start_message: pa.start_message,
+                    end_message: pa.end_message,
+                });
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::parse_file;
+
+    #[test]
+    fn test_compile_sequence_diagram() {
+        let input = r#"sequenceDiagram
+participant Alice
+participant Bob
+Alice->>Bob: Hello
+Bob-->>Alice: Hi
+"#;
+        let ast = parse_file(input).unwrap();
+        let diagram = compile(&ast).unwrap();
+        assert_eq!(diagram.kind, DiagramKind::Sequence);
+        assert_eq!(diagram.nodes.len(), 2);
+        assert_eq!(diagram.edges.len(), 2);
+        assert_eq!(diagram.nodes[0].kind, "participant");
+    }
+
+    #[test]
+    fn test_compile_sequence_implicit_participants() {
+        let input = "sequenceDiagram\nAlice->>Bob: Hello\n";
+        let ast = parse_file(input).unwrap();
+        let diagram = compile(&ast).unwrap();
+        assert_eq!(diagram.nodes.len(), 2);
+        assert!(!diagram.nodes[0].explicit || !diagram.nodes[1].explicit);
+    }
+
+    #[test]
+    fn test_compile_sequence_activation() {
+        let input = "sequenceDiagram\nAlice->>+Bob: Hello\nBob-->>-Alice: Bye\n";
+        let ast = parse_file(input).unwrap();
+        let diagram = compile(&ast).unwrap();
+        assert_eq!(diagram.activations.len(), 1);
     }
 }

@@ -154,10 +154,12 @@ mod tests {
     use super::*;
     use crate::parser::Ident;
     use crate::parser::compile::{Group, Node, Edge};
+    use crate::parser::DiagramKind;
 
     fn make_test_diagram() -> Diagram {
         // A simple diagram: A -> B -> C, all in same group
         Diagram {
+            kind: DiagramKind::Class,
             root: GroupId(0),
             groups: vec![Group {
                 gid: GroupId(0),
@@ -216,6 +218,7 @@ mod tests {
                 Edge { from: NodeId(0), to: NodeId(1), arrow: "line".to_string(), label: None, order: 3 },
                 Edge { from: NodeId(1), to: NodeId(2), arrow: "line".to_string(), label: None, order: 4 },
             ],
+            activations: vec![],
         }
     }
 
