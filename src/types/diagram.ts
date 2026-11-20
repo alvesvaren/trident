@@ -11,9 +11,16 @@ export interface Bounds {
 
 export type TextElement =
   | { type: "Stereotype"; data: { text: string; y: number; font_size: number } }
-  | { type: "Title"; data: { text: string; y: number; font_size: number; italic: boolean } }
+  | { type: "Title"; data: { text: string; y: number; font_size: number } & TextStyle }
   | { type: "Separator"; data: { x1: number; y1: number; x2: number; y2: number } }
-  | { type: "BodyText"; data: { text: string; y: number; font_size: number } };
+  | { type: "BodyText"; data: { text: string; y: number; font_size: number } & TextStyle };
+
+/** Styling from trailing classifiers in the source: `*` => italic, `$` => underline */
+export interface TextStyle {
+  italic: boolean;
+  underline: boolean;
+}
+
 
 export interface NodeRenderingConfig {
   padding: number;
@@ -29,6 +36,8 @@ export interface DiagramNode {
   /** Modifiers: "abstract", "interface", "enum", "rectangle", "circle", "diamond", etc. */
   modifiers: string[];
   label: string | null;
+  /** Styling of the displayed name (used by shape nodes, which have no Title element) */
+  name_style: TextStyle;
   text_elements: TextElement[];
   rendering_config: NodeRenderingConfig;
   bounds: Bounds;

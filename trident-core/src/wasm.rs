@@ -28,12 +28,13 @@ fn generate_text_elements(node: &crate::parser::compile::Node, config: &NodeRend
 
     // Add title
     let title = node.label.as_ref().unwrap_or(&node.id.0).clone();
-    let is_abstract = node.modifiers.contains(&"abstract".to_string());
+    let is_abstract = node.modifiers.iter().any(|m| m == "abstract");
     elements.push(TextElement::Title {
         text: title,
         y: current_y + 12, // Baseline for 12px font
         font_size: 12,
-        italic: is_abstract,
+        italic: is_abstract || node.name_style.italic,
+        underline: node.name_style.underline,
     });
     current_y += config.line_height;
 
@@ -59,10 +60,13 @@ fn generate_text_elements(node: &crate::parser::compile::Node, config: &NodeRend
             current_y += config.line_height;
         } else {
             // Add text line (baseline positioned for 11px font)
+            let (text, style) = TextStyle::parse_member(line);
             elements.push(TextElement::BodyText {
-                text: line.clone(),
+                text,
                 y: current_y + 11,
                 font_size: 11,
+                italic: style.italic,
+                underline: style.underline,
             });
             current_y += config.line_height;
         }
@@ -92,7 +96,7 @@ fn format_modifiers(modifiers: &[String], kind: &str) -> String {
 fn is_separator_line(line: &str) -> bool {
     line.trim().chars().all(|c| c == '-')
 }
-use crate::parser::{self, PointI, get_arrow_registry};
+use crate::parser::{self, PointI, TextStyle, get_arrow_registry};
 
 #[wasm_bindgen]
 extern "C" {
@@ -182,6 +186,7 @@ pub fn compile_diagram(input: &str) -> String {
             kind: n.kind.clone(),
             modifiers: n.modifiers.clone(),
             label: n.label.clone(),
+            name_style: n.name_style,
             text_elements,
             rendering_config,
             bounds,

@@ -106,6 +106,9 @@ fn emit_node(n: &NodeAst, indent: usize, out: &mut String) {
     if let Some(label) = &n.label {
         header.push_str(&format!(" \"{}\"", label));
     }
+
+    // Name classifiers (`*` italic, `$` underline) go last in the header
+    header.push_str(n.name_style.suffix());
     
     // If node has pos, width, height, or body_lines, emit with block
     if n.pos.is_some() || n.width.is_some() || n.height.is_some() || !n.body_lines.is_empty() {
@@ -243,5 +246,12 @@ mod tests {
         let output = emit_file(&ast);
         assert!(output.contains("group MyGroup"));
         assert!(output.contains("class Foo"));
+    }
+
+    #[test]
+    fn test_roundtrip_name_classifiers() {
+        let input = "class Foo \"Display\"*$ {\n    + count: int$\n}\n";
+        let output = emit_file(&parse_file(input).unwrap());
+        assert_eq!(output, input);
     }
 }

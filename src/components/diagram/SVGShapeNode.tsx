@@ -1,6 +1,7 @@
 import type { DiagramNode as DiagramNodeType } from "../../types/diagram";
 
 import { getShape } from "../../utils/geometry";
+import { textStyleProps } from "../../utils/textStyle";
 
 interface SVGShapeNodeProps {
   node: DiagramNodeType;
@@ -65,7 +66,16 @@ export function SVGShapeNode({ node, x, y, onMouseDown, onUnlock, onResizeStart,
       {shape === "rectangle" && <rect x={0} y={0} width={w} height={h} rx={4} ry={4} fill={fillColor} stroke={strokeColor} strokeWidth={1} />}
 
       {/* Label centered in shape */}
-      <text x={cx} y={cy} textAnchor='middle' dominantBaseline='central' fill={textColor} fontSize={fontSize} fontFamily='ui-monospace, monospace'>
+      <text
+        x={cx}
+        y={cy}
+        textAnchor='middle'
+        dominantBaseline='central'
+        fill={textColor}
+        fontSize={fontSize}
+        fontFamily='ui-monospace, monospace'
+        {...textStyleProps(node.name_style)}
+      >
         {label}
       </text>
 

@@ -32,6 +32,18 @@ The project is currently just a POC that I've used a lot of vibe-coding to build
 - **Class modifiers**: `abstract`, `static`, `sealed`, `final`
 - **Visibility modifiers** (for class members): `public` (`+`), `private` (`-`), `protected` (`#`)
 
+#### Text styling
+Add a trailing classifier to make text *italic* (`*`, UML abstract) or underlined (`$`, UML static), same as in Mermaid. Both can be combined (`*$`).
+- **Node names**: put the classifier after the name or label: `class Shape*`, `class Config$`, `class E "Example"*$`
+- **Members**: put it at the end of the line, or right after a method's parameter list:
+  ```trd
+  class Shape* {
+      + count: int$
+      + area(): number*
+      + create()$: Shape
+  }
+  ```
+
 #### Groups
 - **Named groups**: `group Model { ... }` - creates a visual container with a label
 - **Anonymous groups**: `group { ... }` - creates a layout scope without visual container

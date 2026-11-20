@@ -299,7 +299,11 @@ impl<'a> Parser<'a> {
         mut rest: &str,
     ) -> Result<Option<NodeAst>, ParseError> {
         let start_line = self.line_no();
-        
+
+        // optional classifiers directly after the identifier: `class Foo*` / `class Foo$`
+        let (mut name_style, after) = take_classifiers(rest);
+        rest = after;
+
         // optional label string
         let mut label: Option<String> = None;
         if rest.starts_with('"') {
@@ -310,6 +314,12 @@ impl<'a> Parser<'a> {
             })?;
             label = Some(s);
             rest = after.trim();
+
+            // classifiers may also follow the label: `class Foo "Display"*`
+            let (label_style, after) = take_classifiers(rest);
+            name_style.italic |= label_style.italic;
+            name_style.underline |= label_style.underline;
+            rest = after;
         }
 
         // optional '{' on same line
@@ -341,6 +351,7 @@ impl<'a> Parser<'a> {
                 modifiers,
                 id,
                 label,
+                name_style,
                 pos: None,
                 width: None,
                 height: None,
@@ -373,6 +384,7 @@ impl<'a> Parser<'a> {
                     modifiers,
                     id,
                     label,
+                    name_style,
                     pos,
                     width,
                     height,
@@ -622,6 +634,17 @@ fn take_ident_prefix(s: &str) -> (Option<&str>, &str) {
     }
 }
 
+/// Consume leading `*` / `$` classifiers, returning the style and the trimmed rest.
+fn take_classifiers(s: &str) -> (TextStyle, &str) {
+    let rest = s.trim_start_matches(['*', '$']);
+    let classifiers = &s[..s.len() - rest.len()];
+    let style = TextStyle {
+        italic: classifiers.contains('*'),
+        underline: classifiers.contains('$'),
+    };
+    (style, rest.trim_start())
+}
+
 fn parse_string_prefix(s: &str) -> Result<(String, &str), String> {
     let s = s.trim_start();
     if !s.starts_with('"') {
@@ -816,5 +839,40 @@ mod tests {
             }
             _ => panic!("Expected Relation"),
         }
+    }
+
+    fn parse_single_node(input: &str) -> NodeAst {
+        let ast = parse_file(input).unwrap();
+        match ast.items.into_iter().next() {
+            Some(Stmt::Node(n)) => n,
+            other => panic!("Expected Node, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_name_classifiers() {
+        let n = parse_single_node("class Foo*\n");
+        assert_eq!(n.id.0, "Foo");
+        assert_eq!(n.name_style, TextStyle { italic: true, underline: false });
+
+        let n = parse_single_node("class Foo$ {\n+ x: int\n}\n");
+        assert_eq!(n.name_style, TextStyle { italic: false, underline: true });
+        assert_eq!(n.body_lines, vec!["+ x: int"]);
+
+        let n = parse_single_node("class Foo \"Display\"*$\n");
+        assert_eq!(n.label.as_deref(), Some("Display"));
+        assert_eq!(n.name_style, TextStyle { italic: true, underline: true });
+
+        let n = parse_single_node("circle C$\n");
+        assert_eq!(n.name_style, TextStyle { italic: false, underline: true });
+
+        let n = parse_single_node("class Plain\n");
+        assert_eq!(n.name_style, TextStyle::default());
+    }
+
+    #[test]
+    fn test_composition_relation_still_parses() {
+        let ast = parse_file("A *-- B\n").unwrap();
+        assert!(matches!(&ast.items[0], Stmt::Relation(r) if r.arrow == "compose_right"));
     }
 }

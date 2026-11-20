@@ -207,6 +207,7 @@ pub fn insert_implicit_node(ast: &mut FileAst, node_id: &str, pos: PointI) -> bo
         modifiers: Vec::new(), // Was vec!["rectangle"], now empty per user request
         id: Ident(node_id.to_string()),
         label: None,
+        name_style: TextStyle::default(),
         pos: Some(pos),
         width: None,
         height: None,

@@ -195,6 +195,10 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
         // line comment
         [/%%.*$/, "comment"],
 
+        // style classifiers: `*` italic, `$` underline (end of line or right after a method's params)
+        [/[*$]+(?=\s*(%%.*)?$)/, "keyword.modifier"],
+        [/(\))([*$]+)/, ["delimiter.parenthesis", "keyword.modifier"]],
+
         // arrow operators with parentheses (must come first to prevent parens from being tokenized separately)
         [parenArrowRegex, "operator"],
 
