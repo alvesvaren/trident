@@ -1,4 +1,5 @@
 use serde::Serialize;
+use crate::parser::markup::NameMarkup;
 
 /// Source location span for code generation
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -34,57 +35,6 @@ pub enum Stmt {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct Ident(pub String);
 
-/// Text styling set by trailing classifiers (Mermaid-style):
-/// `*` => italic (UML abstract), `$` => underline (UML static).
-#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, Serialize)]
-pub struct TextStyle {
-    pub italic: bool,
-    pub underline: bool,
-}
-
-impl TextStyle {
-    /// Strip trailing classifier chars (`*`, `$`, in any order) from `s`.
-    /// Returns the remaining text (trailing whitespace trimmed) and the parsed style.
-    pub fn strip_suffix(s: &str) -> (&str, TextStyle) {
-        let rest = s.trim_end_matches(['*', '$']);
-        let classifiers = &s[rest.len()..];
-        let style = TextStyle {
-            italic: classifiers.contains('*'),
-            underline: classifiers.contains('$'),
-        };
-        (rest.trim_end(), style)
-    }
-
-    /// Parse classifiers on a class member line. Accepts them at the end of the line
-    /// (`+ count: int$`) or directly after a method's parameter list (`+ draw()*: void`).
-    /// Returns the line with the classifiers removed.
-    pub fn parse_member(line: &str) -> (String, TextStyle) {
-        let (rest, style) = Self::strip_suffix(line);
-        if style != TextStyle::default() {
-            return (rest.to_string(), style);
-        }
-        if let Some(paren) = line.rfind(')') {
-            let after = &line[paren + 1..];
-            let tail = after.trim_start_matches(['*', '$']);
-            let (_, style) = Self::strip_suffix(&after[..after.len() - tail.len()]);
-            if style != TextStyle::default() {
-                return (format!("{}{}", &line[..=paren], tail), style);
-            }
-        }
-        (line.to_string(), TextStyle::default())
-    }
-
-    /// Classifier suffix for code generation (empty when unstyled).
-    pub fn suffix(&self) -> &'static str {
-        match (self.italic, self.underline) {
-            (false, false) => "",
-            (true, false) => "*",
-            (false, true) => "$",
-            (true, true) => "*$",
-        }
-    }
-}
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize)]
 pub struct PointI {
     pub x: i32,
@@ -116,8 +66,8 @@ pub struct NodeAst {
     pub id: Ident,
     /// Display label (optional)
     pub label: Option<String>,
-    /// Styling of the displayed name (`class Foo*` => italic, `class Foo$` => underline)
-    pub name_style: TextStyle,
+    /// Markdown-style markup around the name (`class *Foo*` => italic, `class __Foo__` => underline)
+    pub name_markup: NameMarkup,
     /// local position relative to closest parent group (or root)
     pub pos: Option<PointI>,
     /// Custom width (from @width directive)
@@ -607,20 +557,4 @@ mod tests {
         assert_eq!(impl_left.canonical_name, "implements_left");
     }
 
-    #[test]
-    fn test_member_classifiers() {
-        let italic = TextStyle { italic: true, underline: false };
-        let underline = TextStyle { italic: false, underline: true };
-
-        assert_eq!(TextStyle::parse_member("+ count: int$"), ("+ count: int".into(), underline));
-        assert_eq!(TextStyle::parse_member("+ draw(): void*"), ("+ draw(): void".into(), italic));
-        assert_eq!(TextStyle::parse_member("+ draw()*: void"), ("+ draw(): void".into(), italic));
-        assert_eq!(TextStyle::parse_member("+ make()$ : Foo"), ("+ make() : Foo".into(), underline));
-        assert_eq!(
-            TextStyle::parse_member("+ both()*$"),
-            ("+ both()".into(), TextStyle { italic: true, underline: true })
-        );
-        assert_eq!(TextStyle::parse_member("+ plain(): int"), ("+ plain(): int".into(), TextStyle::default()));
-        assert_eq!(TextStyle::parse_member("snake_case_name"), ("snake_case_name".into(), TextStyle::default()));
-    }
 }

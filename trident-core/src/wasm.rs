@@ -27,14 +27,22 @@ fn generate_text_elements(node: &crate::parser::compile::Node, config: &NodeRend
     }
 
     // Add title
-    let title = node.label.as_ref().unwrap_or(&node.id.0).clone();
+    // The label is markup; a bare id is plain text styled by its declaration markup.
+    // `abstract` always italicizes the whole title.
     let is_abstract = node.modifiers.iter().any(|m| m == "abstract");
+    let base_style = node.name_style.union(TextStyle { italic: is_abstract, underline: false });
+    let mut spans = match &node.label {
+        Some(label) => parse_inline(label),
+        None => vec![StyledSpan { text: node.id.0.clone(), style: TextStyle::default() }],
+    };
+    for span in &mut spans {
+        span.style = span.style.union(base_style);
+    }
     elements.push(TextElement::Title {
-        text: title,
+        text: plain_text(&spans),
+        spans,
         y: current_y + 12, // Baseline for 12px font
         font_size: 12,
-        italic: is_abstract || node.name_style.italic,
-        underline: node.name_style.underline,
     });
     current_y += config.line_height;
 
@@ -60,13 +68,12 @@ fn generate_text_elements(node: &crate::parser::compile::Node, config: &NodeRend
             current_y += config.line_height;
         } else {
             // Add text line (baseline positioned for 11px font)
-            let (text, style) = TextStyle::parse_member(line);
+            let spans = parse_inline(line);
             elements.push(TextElement::BodyText {
-                text,
+                text: plain_text(&spans),
+                spans,
                 y: current_y + 11,
                 font_size: 11,
-                italic: style.italic,
-                underline: style.underline,
             });
             current_y += config.line_height;
         }
@@ -96,7 +103,8 @@ fn format_modifiers(modifiers: &[String], kind: &str) -> String {
 fn is_separator_line(line: &str) -> bool {
     line.trim().chars().all(|c| c == '-')
 }
-use crate::parser::{self, PointI, TextStyle, get_arrow_registry};
+use crate::parser::{self, PointI, StyledSpan, TextStyle, get_arrow_registry};
+use crate::parser::markup::{parse_inline, plain_text};
 
 #[wasm_bindgen]
 extern "C" {
@@ -186,7 +194,6 @@ pub fn compile_diagram(input: &str) -> String {
             kind: n.kind.clone(),
             modifiers: n.modifiers.clone(),
             label: n.label.clone(),
-            name_style: n.name_style,
             text_elements,
             rendering_config,
             bounds,

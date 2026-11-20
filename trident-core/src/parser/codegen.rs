@@ -100,15 +100,14 @@ fn emit_node(n: &NodeAst, indent: usize, out: &mut String) {
     // Emit original_kind (preserves user's syntax: enum, diamond, etc.)
     header.push_str(&n.original_kind);
     header.push(' ');
+    header.push_str(&n.name_markup.open);
     header.push_str(&n.id.0);
+    header.push_str(&n.name_markup.close);
     
     // Label if present
     if let Some(label) = &n.label {
         header.push_str(&format!(" \"{}\"", label));
     }
-
-    // Name classifiers (`*` italic, `$` underline) go last in the header
-    header.push_str(n.name_style.suffix());
     
     // If node has pos, width, height, or body_lines, emit with block
     if n.pos.is_some() || n.width.is_some() || n.height.is_some() || !n.body_lines.is_empty() {
@@ -249,8 +248,8 @@ mod tests {
     }
 
     #[test]
-    fn test_roundtrip_name_classifiers() {
-        let input = "class Foo \"Display\"*$ {\n    + count: int$\n}\n";
+    fn test_roundtrip_name_markup() {
+        let input = "class __*Foo*__ \"*Display*\" {\n    + __count__: int\n}\n";
         let output = emit_file(&parse_file(input).unwrap());
         assert_eq!(output, input);
     }

@@ -33,16 +33,23 @@ The project is currently just a POC that I've used a lot of vibe-coding to build
 - **Visibility modifiers** (for class members): `public` (`+`), `private` (`-`), `protected` (`#`)
 
 #### Text styling
-Add a trailing classifier to make text *italic* (`*`, UML abstract) or underlined (`$`, UML static), same as in Mermaid. Both can be combined (`*$`).
-- **Node names**: put the classifier after the name or label: `class Shape*`, `class Config$`, `class E "Example"*$`
-- **Members**: put it at the end of the line, or right after a method's parameter list:
-  ```trd
-  class Shape* {
-      + count: int$
-      + area(): number*
-      + create()$: Shape
-  }
-  ```
+Node names, labels and class members support markdown-style markup:
+- `*text*` or `_text_` - italic (e.g. UML abstract)
+- `__text__` - underline (e.g. UML static)
+- `___text___` or `__*text*__` - both
+- `\*`, `\_` - literal `*` / `_`
+
+Underscores inside words (`snake_case`) are left alone, and unmatched delimiters render as-is.
+
+```trd
+class *Shape* {
+    + __count__: int
+    + *area*(): number
+}
+class __Config__ "Global __config__"
+```
+
+The markup around a node name is not part of its identifier, so relations still use `Shape --> Config`.
 
 #### Groups
 - **Named groups**: `group Model { ... }` - creates a visual container with a label

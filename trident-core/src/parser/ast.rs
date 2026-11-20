@@ -24,6 +24,7 @@
 
 use crate::parser::types::*;
 use crate::parser::types::{get_arrow_registry, arrow_from_token};
+use crate::parser::markup::{parse_name, NameMarkup};
 use std::fmt;
 
 #[derive(Debug, Clone)]
@@ -223,7 +224,7 @@ impl<'a> Parser<'a> {
         
         // Collect leading identifiers (potential modifiers + kind)
         loop {
-            let (ident_part, after_ident) = take_ident_prefix(rest);
+            let (ident_part, after_ident) = take_name_prefix(rest);
             match ident_part {
                 Some(ident) => {
                     words.push(ident);
@@ -283,10 +284,14 @@ impl<'a> Parser<'a> {
         
         // Determine final kind
         let kind = mapped_kind.unwrap_or(words[kind_idx]).to_string();
-        let id = Ident(id_str.to_string());
-        
+        // The name may be wrapped in markdown-style markup: `class *Foo*`, `class __Foo__`
+        let (id, name_markup) = match parse_name(id_str) {
+            Some((id, markup)) if is_ident(&id) => (Ident(id), markup),
+            _ => return self.err(1, format!("invalid node name '{id_str}'")),
+        };
+
         // Parse rest of line
-        self.parse_node_with_parts(modifiers, kind, original_kind, id, rest)
+        self.parse_node_with_parts(modifiers, kind, original_kind, id, name_markup, rest)
     }
     
     /// Parse node after modifiers/kind/id are known
@@ -296,13 +301,10 @@ impl<'a> Parser<'a> {
         kind: String,
         original_kind: String,
         id: Ident,
+        name_markup: NameMarkup,
         mut rest: &str,
     ) -> Result<Option<NodeAst>, ParseError> {
         let start_line = self.line_no();
-
-        // optional classifiers directly after the identifier: `class Foo*` / `class Foo$`
-        let (mut name_style, after) = take_classifiers(rest);
-        rest = after;
 
         // optional label string
         let mut label: Option<String> = None;
@@ -314,12 +316,6 @@ impl<'a> Parser<'a> {
             })?;
             label = Some(s);
             rest = after.trim();
-
-            // classifiers may also follow the label: `class Foo "Display"*`
-            let (label_style, after) = take_classifiers(rest);
-            name_style.italic |= label_style.italic;
-            name_style.underline |= label_style.underline;
-            rest = after;
         }
 
         // optional '{' on same line
@@ -351,7 +347,7 @@ impl<'a> Parser<'a> {
                 modifiers,
                 id,
                 label,
-                name_style,
+                name_markup,
                 pos: None,
                 width: None,
                 height: None,
@@ -384,7 +380,7 @@ impl<'a> Parser<'a> {
                     modifiers,
                     id,
                     label,
-                    name_style,
+                    name_markup,
                     pos,
                     width,
                     height,
@@ -634,15 +630,19 @@ fn take_ident_prefix(s: &str) -> (Option<&str>, &str) {
     }
 }
 
-/// Consume leading `*` / `$` classifiers, returning the style and the trimmed rest.
-fn take_classifiers(s: &str) -> (TextStyle, &str) {
-    let rest = s.trim_start_matches(['*', '$']);
-    let classifiers = &s[..s.len() - rest.len()];
-    let style = TextStyle {
-        italic: classifiers.contains('*'),
-        underline: classifiers.contains('$'),
-    };
-    (style, rest.trim_start())
+/// Like `take_ident_prefix`, but also accepts `*` so node names can carry
+/// markdown-style markup (`*Foo*`, `__Foo__`). Must start with a letter, `_` or `*`.
+fn take_name_prefix(s: &str) -> (Option<&str>, &str) {
+    let s = s.trim_start();
+    let end = s
+        .char_indices()
+        .find(|&(_, c)| !(c.is_ascii_alphanumeric() || c == '_' || c == '*'))
+        .map_or(s.len(), |(i, _)| i);
+    if end == 0 || s.as_bytes()[0].is_ascii_digit() {
+        (None, s)
+    } else {
+        (Some(&s[..end]), &s[end..])
+    }
 }
 
 fn parse_string_prefix(s: &str) -> Result<(String, &str), String> {
@@ -752,6 +752,7 @@ fn split_relation_compact(s: &str) -> Option<(&str, &str, &str)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parser::markup::TextStyle;
 
     #[test]
     fn test_parse_simple_class() {
@@ -850,24 +851,32 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_name_classifiers() {
-        let n = parse_single_node("class Foo*\n");
-        assert_eq!(n.id.0, "Foo");
-        assert_eq!(n.name_style, TextStyle { italic: true, underline: false });
+    fn test_parse_name_markup() {
+        let italic = TextStyle { italic: true, underline: false };
+        let underline = TextStyle { italic: false, underline: true };
 
-        let n = parse_single_node("class Foo$ {\n+ x: int\n}\n");
-        assert_eq!(n.name_style, TextStyle { italic: false, underline: true });
+        let n = parse_single_node("class *Foo*\n");
+        assert_eq!(n.id.0, "Foo");
+        assert_eq!(n.name_markup.style, italic);
+
+        let n = parse_single_node("class __Foo__ {\n+ x: int\n}\n");
+        assert_eq!(n.id.0, "Foo");
+        assert_eq!(n.name_markup.style, underline);
         assert_eq!(n.body_lines, vec!["+ x: int"]);
 
-        let n = parse_single_node("class Foo \"Display\"*$\n");
-        assert_eq!(n.label.as_deref(), Some("Display"));
-        assert_eq!(n.name_style, TextStyle { italic: true, underline: true });
+        let n = parse_single_node("abstract class _my_class_ \"*Display*\"\n");
+        assert_eq!(n.id.0, "my_class");
+        assert_eq!(n.label.as_deref(), Some("*Display*"));
+        assert_eq!(n.name_markup.style, italic);
 
-        let n = parse_single_node("circle C$\n");
-        assert_eq!(n.name_style, TextStyle { italic: false, underline: true });
+        let n = parse_single_node("circle __C__\n");
+        assert_eq!(n.name_markup.style, underline);
 
-        let n = parse_single_node("class Plain\n");
-        assert_eq!(n.name_style, TextStyle::default());
+        let n = parse_single_node("class Plain_Name\n");
+        assert_eq!(n.id.0, "Plain_Name");
+        assert_eq!(n.name_markup, NameMarkup::default());
+
+        assert!(parse_file("class *Foo\n").is_err());
     }
 
     #[test]

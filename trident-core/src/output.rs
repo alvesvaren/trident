@@ -4,7 +4,7 @@
 //! for rendering the diagram.
 
 use crate::layout::{RectI, NodeRenderingConfig};
-use crate::parser::{PointI, TextStyle};
+use crate::parser::{PointI, StyledSpan};
 use serde::Serialize;
 
 /// Type of text element for rendering
@@ -14,11 +14,11 @@ pub enum TextElement {
     /// Stereotype line (modifiers and kind)
     Stereotype { text: String, y: i32, font_size: i32 },
     /// Title line (node label/id)
-    Title { text: String, y: i32, font_size: i32, italic: bool, underline: bool },
+    Title { text: String, spans: Vec<StyledSpan>, y: i32, font_size: i32 },
     /// Separator line (---)
     Separator { x1: i32, y1: i32, x2: i32, y2: i32 },
-    /// Regular body text line (classifiers already stripped from `text`)
-    BodyText { text: String, y: i32, font_size: i32, italic: bool, underline: bool },
+    /// Regular body text line
+    BodyText { text: String, spans: Vec<StyledSpan>, y: i32, font_size: i32 },
 }
 
 /// A rendered node ready for React to display
@@ -30,8 +30,6 @@ pub struct NodeOutput {
     /// Modifiers: "abstract", "interface", "enum", "rectangle", "circle", "diamond", etc.
     pub modifiers: Vec<String>,
     pub label: Option<String>,
-    /// Styling of the displayed name (used by shape nodes, which have no Title element)
-    pub name_style: TextStyle,
     /// Structured text elements with calculated positions
     pub text_elements: Vec<TextElement>,
     /// Rendering constants for React to use

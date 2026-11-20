@@ -1,7 +1,7 @@
 import type { DiagramNode as DiagramNodeType } from "../../types/diagram";
 
 import { getShape } from "../../utils/geometry";
-import { textStyleProps } from "../../utils/textStyle";
+import { StyledText } from "./StyledText";
 
 interface SVGShapeNodeProps {
   node: DiagramNodeType;
@@ -18,7 +18,8 @@ interface SVGShapeNodeProps {
 /** SVGShapeNode renders node-kind elements (simple shapes with labels) */
 export function SVGShapeNode({ node, x, y, onMouseDown, onUnlock, onResizeStart, exportMode = false }: SVGShapeNodeProps) {
   const shape = getShape(node.modifiers);
-  const label = node.label ?? node.id;
+  const title = node.text_elements.find(el => el.type === "Title");
+  const labelSpans = title?.type === "Title" ? title.data.spans : [{ text: node.label ?? node.id, italic: false, underline: false }];
   const w = node.bounds.w;
   const h = node.bounds.h;
 
@@ -74,9 +75,8 @@ export function SVGShapeNode({ node, x, y, onMouseDown, onUnlock, onResizeStart,
         fill={textColor}
         fontSize={fontSize}
         fontFamily='ui-monospace, monospace'
-        {...textStyleProps(node.name_style)}
       >
-        {label}
+        <StyledText spans={labelSpans} />
       </text>
 
       {/* Resize Handles */}

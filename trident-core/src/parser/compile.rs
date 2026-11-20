@@ -280,7 +280,7 @@ impl CompileCtx {
             existing.kind = n.kind.clone();
             existing.modifiers = modifiers;
             existing.label = n.label.clone();
-            existing.name_style = n.name_style;
+            existing.name_style = n.name_markup.style;
             existing.width = n.width;
             existing.height = n.height;
             existing.body_lines = n.body_lines.clone();
@@ -307,7 +307,7 @@ impl CompileCtx {
             modifiers,
             n.id.clone(),
             n.label.clone(),
-            n.name_style,
+            n.name_markup.style,
             parent_gid,
             n.pos,
             n.width,
