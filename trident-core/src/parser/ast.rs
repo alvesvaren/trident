@@ -630,13 +630,13 @@ fn take_ident_prefix(s: &str) -> (Option<&str>, &str) {
     }
 }
 
-/// Like `take_ident_prefix`, but also accepts `*` so node names can carry
-/// markdown-style markup (`*Foo*`, `__Foo__`). Must start with a letter, `_` or `*`.
+/// Like `take_ident_prefix`, but also accepts `*` and `~` so node names can carry
+/// markdown-style markup (`*Foo*`, `__Foo__`, `~~Foo~~`).
 fn take_name_prefix(s: &str) -> (Option<&str>, &str) {
     let s = s.trim_start();
     let end = s
         .char_indices()
-        .find(|&(_, c)| !(c.is_ascii_alphanumeric() || c == '_' || c == '*'))
+        .find(|&(_, c)| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '*' | '~')))
         .map_or(s.len(), |(i, _)| i);
     if end == 0 || s.as_bytes()[0].is_ascii_digit() {
         (None, s)
@@ -852,8 +852,8 @@ mod tests {
 
     #[test]
     fn test_parse_name_markup() {
-        let italic = TextStyle { italic: true, underline: false };
-        let underline = TextStyle { italic: false, underline: true };
+        let italic = TextStyle { italic: true, ..Default::default() };
+        let underline = TextStyle { underline: true, ..Default::default() };
 
         let n = parse_single_node("class *Foo*\n");
         assert_eq!(n.id.0, "Foo");
@@ -871,6 +871,14 @@ mod tests {
 
         let n = parse_single_node("circle __C__\n");
         assert_eq!(n.name_markup.style, underline);
+
+        let n = parse_single_node("weak rectangle ~~Part~~\n");
+        assert_eq!(n.id.0, "Part");
+        assert!(n.name_markup.style.dashed_underline);
+        assert_eq!(n.modifiers, vec!["weak"]);
+
+        let n = parse_single_node("triangle ISA\n");
+        assert_eq!((n.kind.as_str(), n.original_kind.as_str()), ("node", "triangle"));
 
         let n = parse_single_node("class Plain_Name\n");
         assert_eq!(n.id.0, "Plain_Name");

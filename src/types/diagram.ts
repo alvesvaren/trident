@@ -15,11 +15,12 @@ export type TextElement =
   | { type: "Separator"; data: { x1: number; y1: number; x2: number; y2: number } }
   | { type: "BodyText"; data: { text: string; spans: StyledSpan[]; y: number; font_size: number } };
 
-/** A run of text with one style, parsed from markdown-style markup (`*italic*`, `__underline__`) */
+/** A run of text with one style, parsed from markdown-style markup (`*italic*`, `__underline__`, `~~dashed~~`) */
 export interface StyledSpan {
   text: string;
   italic: boolean;
   underline: boolean;
+  dashed_underline: boolean;
 }
 
 

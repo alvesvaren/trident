@@ -12,13 +12,52 @@ export function getCenter(b: Bounds): { x: number; y: number } {
 }
 
 /** Supported node shapes */
-export type NodeShape = "rectangle" | "circle" | "diamond";
+export type NodeShape = "rectangle" | "circle" | "diamond" | "triangle";
 
 /** Get shape from modifiers (default: rectangle) */
 export function getShape(modifiers: string[]): NodeShape {
   if (modifiers.includes("circle")) return "circle";
   if (modifiers.includes("diamond")) return "diamond";
+  if (modifiers.includes("triangle")) return "triangle";
   return "rectangle";
+}
+
+/** Modifiers that draw a node with a double border (ER weak entities / identifying relationships) */
+const DOUBLE_BORDER_MODIFIERS = ["weak", "identifying"];
+
+export function hasDoubleBorder(modifiers: string[]): boolean {
+  return modifiers.some(m => DOUBLE_BORDER_MODIFIERS.includes(m));
+}
+
+/** Corners of an upward-pointing isosceles triangle filling the w×h box, with every edge moved `inset` inwards */
+export function trianglePoints(w: number, h: number, inset = 0): [number, number][] {
+  const side = Math.hypot(w / 2, h);
+  const apexY = (inset * side) / (w / 2);
+  const baseY = h - inset;
+  // Half-width of the original triangle at baseY, minus the slanted edge's horizontal shift
+  const halfBase = ((w / 2) * baseY) / h - (inset * side) / h;
+  return [
+    [w / 2, apexY],
+    [w / 2 + halfBase, baseY],
+    [w / 2 - halfBase, baseY],
+  ];
+}
+
+/** Smallest t > 0 where the ray start + t*(dx, dy) crosses the polygon boundary */
+function rayPolygonT(start: { x: number; y: number }, dx: number, dy: number, poly: [number, number][]): number {
+  let best = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const [ax, ay] = poly[i];
+    const [bx, by] = poly[(i + 1) % poly.length];
+    const ex = bx - ax;
+    const ey = by - ay;
+    const denom = dx * ey - dy * ex;
+    if (denom === 0) continue;
+    const t = ((ax - start.x) * ey - (ay - start.y) * ex) / denom;
+    const u = ((ax - start.x) * dy - (ay - start.y) * dx) / denom;
+    if (t > 0 && u >= 0 && u <= 1) best = Math.min(best, t);
+  }
+  return best;
 }
 
 /** Get target point within a node (the "spine" for rectangles) */
@@ -68,6 +107,11 @@ export function getEdgePoint(
     };
   } else if (shape === "diamond") {
     const t = 1 / ((2 * Math.abs(dx)) / bounds.w + (2 * Math.abs(dy)) / bounds.h);
+    intersection = { x: start.x + dx * t, y: start.y + dy * t };
+  } else if (shape === "triangle") {
+    const poly = trianglePoints(bounds.w, bounds.h).map(([px, py]) => [bounds.x + px, bounds.y + py] as [number, number]);
+    const t = rayPolygonT(start, dx, dy, poly);
+    if (t === Infinity) return start;
     intersection = { x: start.x + dx * t, y: start.y + dy * t };
   } else {
     const halfW = bounds.w / 2;

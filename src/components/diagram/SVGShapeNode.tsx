@@ -1,6 +1,6 @@
 import type { DiagramNode as DiagramNodeType } from "../../types/diagram";
 
-import { getShape } from "../../utils/geometry";
+import { getShape, hasDoubleBorder, trianglePoints, type NodeShape } from "../../utils/geometry";
 import { StyledText } from "./StyledText";
 
 interface SVGShapeNodeProps {
@@ -15,11 +15,36 @@ interface SVGShapeNodeProps {
   exportMode?: boolean;
 }
 
+const DOUBLE_GAP = 4;
+
+/** Outline of a shape filling a w×h box, shrunk by `inset` on every side */
+function ShapeOutline({ shape, w, h, inset, fill, stroke }: { shape: NodeShape; w: number; h: number; inset: number; fill: string; stroke: string }) {
+  const i = inset + 1; // keep the 1px stroke inside the box
+  switch (shape) {
+    case "circle":
+      return <ellipse cx={w / 2} cy={h / 2} rx={w / 2 - i} ry={h / 2 - i} fill={fill} stroke={stroke} strokeWidth={1} />;
+    case "diamond": {
+      // Inset along the slanted edges: scale the half-diagonals so the edge moves `inset` inwards
+      const k = Math.hypot(w / 2, h / 2);
+      const ix = (i * k) / (h / 2);
+      const iy = (i * k) / (w / 2);
+      const points = `${w / 2},${iy} ${w - ix},${h / 2} ${w / 2},${h - iy} ${ix},${h / 2}`;
+      return <polygon points={points} fill={fill} stroke={stroke} strokeWidth={1} />;
+    }
+    case "triangle":
+      return <polygon points={trianglePoints(w, h, i).map(p => p.join(",")).join(" ")} fill={fill} stroke={stroke} strokeWidth={1} />;
+    case "rectangle":
+      return <rect x={inset} y={inset} width={w - 2 * inset} height={h - 2 * inset} rx={4} ry={4} fill={fill} stroke={stroke} strokeWidth={1} />;
+  }
+}
+
 /** SVGShapeNode renders node-kind elements (simple shapes with labels) */
 export function SVGShapeNode({ node, x, y, onMouseDown, onUnlock, onResizeStart, exportMode = false }: SVGShapeNodeProps) {
   const shape = getShape(node.modifiers);
   const title = node.text_elements.find(el => el.type === "Title");
-  const labelSpans = title?.type === "Title" ? title.data.spans : [{ text: node.label ?? node.id, italic: false, underline: false }];
+  const labelSpans =
+    title?.type === "Title" ? title.data.spans : [{ text: node.label ?? node.id, italic: false, underline: false, dashed_underline: false }];
+  const double = hasDoubleBorder(node.modifiers);
   const w = node.bounds.w;
   const h = node.bounds.h;
 
@@ -60,16 +85,15 @@ export function SVGShapeNode({ node, x, y, onMouseDown, onUnlock, onResizeStart,
   return (
     <g transform={`translate(${x}, ${y})`} onMouseDown={onMouseDown} style={{ cursor: exportMode ? "default" : "grab" }}>
       {/* Shape rendering based on type */}
-      {shape === "circle" && <ellipse cx={cx} cy={cy} rx={w / 2 - 1} ry={h / 2 - 1} fill={fillColor} stroke={strokeColor} strokeWidth={1} />}
+      {/* Shape rendering based on type; double-bordered nodes get a second outline inset by DOUBLE_GAP */}
+      {[0, ...(double ? [DOUBLE_GAP] : [])].map(inset => (
+        <ShapeOutline key={inset} shape={shape} w={w} h={h} inset={inset} fill={inset === 0 ? fillColor : "none"} stroke={strokeColor} />
+      ))}
 
-      {shape === "diamond" && <polygon points={`${cx},1 ${w - 1},${cy} ${cx},${h - 1} 1,${cy}`} fill={fillColor} stroke={strokeColor} strokeWidth={1} />}
-
-      {shape === "rectangle" && <rect x={0} y={0} width={w} height={h} rx={4} ry={4} fill={fillColor} stroke={strokeColor} strokeWidth={1} />}
-
-      {/* Label centered in shape */}
+      {/* Label centered in shape (lower part for triangles, where there's room) */}
       <text
         x={cx}
-        y={cy}
+        y={shape === "triangle" ? h * 0.68 : cy}
         textAnchor='middle'
         dominantBaseline='central'
         fill={textColor}

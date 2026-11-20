@@ -1,5 +1,6 @@
 import type { DiagramNode as DiagramNodeType } from "../../types/diagram";
 import { StyledText } from "./StyledText";
+import { hasDoubleBorder } from "../../utils/geometry";
 
 interface SVGNodeProps {
   node: DiagramNodeType;
@@ -74,6 +75,9 @@ export function SVGNode({ node, x, y, onMouseDown, onUnlock, onResizeStart, expo
     <g transform={`translate(${x}, ${y})`} onMouseDown={onMouseDown} style={{ cursor: exportMode ? "default" : "grab" }}>
       {/* Background */}
       <rect x={0} y={0} width={node.bounds.w} height={node.bounds.h} rx={4} ry={4} fill='var(--canvas-node-bg)' stroke={borderColor} strokeWidth={1} />
+      {hasDoubleBorder(node.modifiers) && (
+        <rect x={4} y={4} width={node.bounds.w - 8} height={node.bounds.h - 8} rx={3} ry={3} fill='none' stroke={borderColor} strokeWidth={1} />
+      )}
 
 
 

@@ -41,6 +41,27 @@ export function EdgeDefs() {
   );
 }
 
+/** Distance between the apexes of neighbouring parallel edges */
+const PARALLEL_EDGE_SPREAD = 28;
+
+/**
+ * For edges sharing the same pair of nodes, how far each one should bow out sideways
+ * (0 for edges without a parallel twin), so they don't draw on top of each other.
+ */
+function parallelEdgeBends(edges: DiagramEdge[]): number[] {
+  const pairKey = (e: DiagramEdge) => [e.from, e.to].sort().join("\0");
+  const groups = new Map<string, number[]>();
+  edges.forEach((e, i) => groups.set(pairKey(e), [...(groups.get(pairKey(e)) ?? []), i]));
+
+  const bends = edges.map(() => 0);
+  for (const indices of groups.values()) {
+    indices.forEach((edgeIndex, k) => {
+      bends[edgeIndex] = (k - (indices.length - 1) / 2) * PARALLEL_EDGE_SPREAD;
+    });
+  }
+  return bends;
+}
+
 interface SVGEdgesProps {
   edges: DiagramEdge[];
   nodes: DiagramNode[];
@@ -55,6 +76,7 @@ export function SVGEdges({ edges, nodes, dragState }: SVGEdgesProps) {
   // Build a map from node id to bounds
   const nodeMap = new Map<string, Bounds>();
   nodes.forEach(n => nodeMap.set(n.id, n.bounds));
+  const bends = parallelEdgeBends(edges);
 
   return (
     <g className='edges'>
@@ -95,16 +117,23 @@ export function SVGEdges({ edges, nodes, dragState }: SVGEdgesProps) {
           endOffset
         );
 
-        const midX = (start.x + end.x) / 2;
-        const midY = (start.y + end.y) / 2;
+        // Parallel edges bow out sideways. The normal is taken in a direction-independent
+        // order (by node id) so A->B and B->A between the same nodes bend apart too.
+        const [ax, ay, bx, by] = edge.from < edge.to ? [start.x, start.y, end.x, end.y] : [end.x, end.y, start.x, start.y];
+        const len = Math.hypot(bx - ax, by - ay) || 1;
+        const normal = { x: -(by - ay) / len, y: (bx - ax) / len };
+        const bend = bends[i];
+        const midX = (start.x + end.x) / 2 + normal.x * bend;
+        const midY = (start.y + end.y) / 2 + normal.y * bend;
+        // A quadratic curve's apex lies halfway to its control point
+        const controlX = (start.x + end.x) / 2 + normal.x * bend * 2;
+        const controlY = (start.y + end.y) / 2 + normal.y * bend * 2;
 
         return (
           <g key={i}>
-            <line
-              x1={start.x}
-              y1={start.y}
-              x2={end.x}
-              y2={end.y}
+            <path
+              d={bend === 0 ? `M ${start.x} ${start.y} L ${end.x} ${end.y}` : `M ${start.x} ${start.y} Q ${controlX} ${controlY} ${end.x} ${end.y}`}
+              fill='none'
               stroke='var(--canvas-edge)'
               strokeWidth={1.5}
               strokeDasharray={isDashed(edge.arrow) ? "8,4" : undefined}

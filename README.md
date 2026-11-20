@@ -17,7 +17,7 @@ The project is currently just a POC that I've used a lot of vibe-coding to build
 
 #### Node Types
 - **Class types**: `class`, `interface`, `enum`, `struct`, `record`, `trait`, `object`
-- **Shape nodes**: `node`, `rectangle`, `circle`, `diamond`
+- **Shape nodes**: `node`, `rectangle`, `circle`, `diamond`, `triangle`
 - Nodes can have optional display labels: `class MyClass "Display Name"`
 - Nodes can have bodies with fields and methods:
   ```trd
@@ -31,13 +31,15 @@ The project is currently just a POC that I've used a lot of vibe-coding to build
 #### Modifiers
 - **Class modifiers**: `abstract`, `static`, `sealed`, `final`
 - **Visibility modifiers** (for class members): `public` (`+`), `private` (`-`), `protected` (`#`)
+- **ER modifiers**: `weak` and `identifying` draw the node with a double border (e.g. `weak rectangle Branch`, `identifying diamond At`)
 
 #### Text styling
 Node names, labels and class members support markdown-style markup:
 - `*text*` or `_text_` - italic (e.g. UML abstract)
 - `__text__` - underline (e.g. UML static)
 - `___text___` or `__*text*__` - both
-- `\*`, `\_` - literal `*` / `_`
+- `~~text~~` - dashed underline (e.g. ER partial keys)
+- `\*`, `\_`, `\~` - literal `*` / `_` / `~`
 
 Underscores inside words (`snake_case`) are left alone, and unmatched delimiters render as-is.
 
