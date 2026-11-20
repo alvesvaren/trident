@@ -195,6 +195,11 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
         // line comment
         [/%%.*$/, "comment"],
 
+        // markdown-style text styling: __underline__, *italic*, _italic_
+        [/(?<![A-Za-z0-9])__(?=\S)[^\n]*?\S__(?![A-Za-z0-9])/, "underline"],
+        [/\*(?=[^\s*-])[^*\n]*?[^\s*]?\*/, "emphasis"],
+        [/(?<![A-Za-z0-9])_(?=[^\s_])[^_\n]*?[^\s_]?_(?![A-Za-z0-9])/, "emphasis"],
+
         // arrow operators with parentheses (must come first to prevent parens from being tokenized separately)
         [parenArrowRegex, "operator"],
 
@@ -451,6 +456,8 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
       { token: "operator", foreground: "D4D4D4" },
       { token: "delimiter", foreground: "D4D4D4" },
       { token: "identifier", foreground: "9CDCFE" },
+      { token: "emphasis", fontStyle: "italic" },
+      { token: "underline", fontStyle: "underline" },
     ],
     colors: {
       // Keep default editor colors
@@ -476,6 +483,8 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
       { token: "operator", foreground: "000000" },
       { token: "delimiter", foreground: "000000" },
       { token: "identifier", foreground: "001080" },
+      { token: "emphasis", fontStyle: "italic" },
+      { token: "underline", fontStyle: "underline" },
     ],
     colors: {
       // Keep default editor colors

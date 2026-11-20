@@ -1,6 +1,7 @@
 import type { DiagramNode as DiagramNodeType } from "../../types/diagram";
 
 import { getShape } from "../../utils/geometry";
+import { StyledText } from "./StyledText";
 
 interface SVGShapeNodeProps {
   node: DiagramNodeType;
@@ -17,7 +18,8 @@ interface SVGShapeNodeProps {
 /** SVGShapeNode renders node-kind elements (simple shapes with labels) */
 export function SVGShapeNode({ node, x, y, onMouseDown, onUnlock, onResizeStart, exportMode = false }: SVGShapeNodeProps) {
   const shape = getShape(node.modifiers);
-  const label = node.label ?? node.id;
+  const title = node.text_elements.find(el => el.type === "Title");
+  const labelSpans = title?.type === "Title" ? title.data.spans : [{ text: node.label ?? node.id, italic: false, underline: false }];
   const w = node.bounds.w;
   const h = node.bounds.h;
 
@@ -65,8 +67,16 @@ export function SVGShapeNode({ node, x, y, onMouseDown, onUnlock, onResizeStart,
       {shape === "rectangle" && <rect x={0} y={0} width={w} height={h} rx={4} ry={4} fill={fillColor} stroke={strokeColor} strokeWidth={1} />}
 
       {/* Label centered in shape */}
-      <text x={cx} y={cy} textAnchor='middle' dominantBaseline='central' fill={textColor} fontSize={fontSize} fontFamily='ui-monospace, monospace'>
-        {label}
+      <text
+        x={cx}
+        y={cy}
+        textAnchor='middle'
+        dominantBaseline='central'
+        fill={textColor}
+        fontSize={fontSize}
+        fontFamily='ui-monospace, monospace'
+      >
+        <StyledText spans={labelSpans} />
       </text>
 
       {/* Resize Handles */}

@@ -16,7 +16,7 @@
 
 use std::collections::HashMap;
 
-use crate::parser::{FileAst, GroupAst, Ident, NodeAst, PointI, RelationAst, Stmt};
+use crate::parser::{FileAst, GroupAst, Ident, NodeAst, PointI, RelationAst, Stmt, TextStyle};
 use serde::Serialize;
 
 #[derive(Debug, Clone)]
@@ -56,6 +56,8 @@ pub struct Node {
     /// Unique identifier
     pub id: Ident,
     pub label: Option<String>,
+    /// Styling of the displayed name (italic / underline)
+    pub name_style: TextStyle,
     pub group: GroupId,
     pub pos: Option<PointI>, // local to group
     /// Custom width (from @width directive)
@@ -186,6 +188,7 @@ impl CompileCtx {
         modifiers: Vec<String>,
         id: Ident,
         label: Option<String>,
+        name_style: TextStyle,
         group: GroupId,
         pos: Option<PointI>,
         width: Option<i32>,
@@ -201,6 +204,7 @@ impl CompileCtx {
             modifiers,
             id,
             label,
+            name_style,
             group,
             pos,
             width,
@@ -276,6 +280,7 @@ impl CompileCtx {
             existing.kind = n.kind.clone();
             existing.modifiers = modifiers;
             existing.label = n.label.clone();
+            existing.name_style = n.name_markup.style;
             existing.width = n.width;
             existing.height = n.height;
             existing.body_lines = n.body_lines.clone();
@@ -302,6 +307,7 @@ impl CompileCtx {
             modifiers,
             n.id.clone(),
             n.label.clone(),
+            n.name_markup.style,
             parent_gid,
             n.pos,
             n.width,
@@ -343,6 +349,7 @@ impl CompileCtx {
             vec!["rectangle".to_string()],
             id.clone(),
             None,
+            TextStyle::default(),
             GroupId(0),
             None,
             None,

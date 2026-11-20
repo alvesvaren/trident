@@ -1,4 +1,5 @@
 use serde::Serialize;
+use crate::parser::markup::NameMarkup;
 
 /// Source location span for code generation
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -65,6 +66,8 @@ pub struct NodeAst {
     pub id: Ident,
     /// Display label (optional)
     pub label: Option<String>,
+    /// Markdown-style markup around the name (`class *Foo*` => italic, `class __Foo__` => underline)
+    pub name_markup: NameMarkup,
     /// local position relative to closest parent group (or root)
     pub pos: Option<PointI>,
     /// Custom width (from @width directive)
@@ -553,4 +556,5 @@ mod tests {
         let impl_left = registry.iter().find(|e| e.token == "<|..").unwrap();
         assert_eq!(impl_left.canonical_name, "implements_left");
     }
+
 }

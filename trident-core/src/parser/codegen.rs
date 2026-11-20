@@ -100,7 +100,9 @@ fn emit_node(n: &NodeAst, indent: usize, out: &mut String) {
     // Emit original_kind (preserves user's syntax: enum, diamond, etc.)
     header.push_str(&n.original_kind);
     header.push(' ');
+    header.push_str(&n.name_markup.open);
     header.push_str(&n.id.0);
+    header.push_str(&n.name_markup.close);
     
     // Label if present
     if let Some(label) = &n.label {
@@ -243,5 +245,12 @@ mod tests {
         let output = emit_file(&ast);
         assert!(output.contains("group MyGroup"));
         assert!(output.contains("class Foo"));
+    }
+
+    #[test]
+    fn test_roundtrip_name_markup() {
+        let input = "class __*Foo*__ \"*Display*\" {\n    + __count__: int\n}\n";
+        let output = emit_file(&parse_file(input).unwrap());
+        assert_eq!(output, input);
     }
 }

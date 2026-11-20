@@ -1,4 +1,5 @@
 mod ast;
+pub mod markup;
 pub mod compile;
 mod codegen;
 mod update;
@@ -16,5 +17,6 @@ pub use update::{
     update_node_geometry,
 };
 pub use types::*;
+pub use markup::{StyledSpan, TextStyle};
 pub use compile::{Diagram, GroupId, NodeId};
 pub use rename::{rename_symbol_in_ast, collect_symbols};

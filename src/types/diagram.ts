@@ -11,9 +11,17 @@ export interface Bounds {
 
 export type TextElement =
   | { type: "Stereotype"; data: { text: string; y: number; font_size: number } }
-  | { type: "Title"; data: { text: string; y: number; font_size: number; italic: boolean } }
+  | { type: "Title"; data: { text: string; spans: StyledSpan[]; y: number; font_size: number } }
   | { type: "Separator"; data: { x1: number; y1: number; x2: number; y2: number } }
-  | { type: "BodyText"; data: { text: string; y: number; font_size: number } };
+  | { type: "BodyText"; data: { text: string; spans: StyledSpan[]; y: number; font_size: number } };
+
+/** A run of text with one style, parsed from markdown-style markup (`*italic*`, `__underline__`) */
+export interface StyledSpan {
+  text: string;
+  italic: boolean;
+  underline: boolean;
+}
+
 
 export interface NodeRenderingConfig {
   padding: number;

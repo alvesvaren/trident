@@ -1,4 +1,5 @@
 import type { DiagramNode as DiagramNodeType } from "../../types/diagram";
+import { StyledText } from "./StyledText";
 
 interface SVGNodeProps {
   node: DiagramNodeType;
@@ -165,9 +166,8 @@ export function SVGNode({ node, x, y, onMouseDown, onUnlock, onResizeStart, expo
                 fontSize={element.data.font_size}
                 fontFamily='ui-monospace, monospace'
                 fontWeight='bold'
-                fontStyle={element.data.italic ? "italic" : "normal"}
               >
-                {element.data.text}
+                <StyledText spans={element.data.spans} />
               </text>
             );
           case "Separator":
@@ -192,7 +192,7 @@ export function SVGNode({ node, x, y, onMouseDown, onUnlock, onResizeStart, expo
                 fontSize={element.data.font_size}
                 fontFamily='ui-monospace, monospace'
               >
-                {element.data.text}
+                <StyledText spans={element.data.spans} />
               </text>
             );
         }

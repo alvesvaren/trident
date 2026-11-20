@@ -4,6 +4,7 @@
 //! in the AST, which can then be emitted back to source code.
 
 use crate::parser::types::*;
+use crate::parser::markup::NameMarkup;
 
 /// Update the position of a node by ID.
 /// Returns true if the node was found and updated.
@@ -207,6 +208,7 @@ pub fn insert_implicit_node(ast: &mut FileAst, node_id: &str, pos: PointI) -> bo
         modifiers: Vec::new(), // Was vec!["rectangle"], now empty per user request
         id: Ident(node_id.to_string()),
         label: None,
+        name_markup: NameMarkup::default(),
         pos: Some(pos),
         width: None,
         height: None,
