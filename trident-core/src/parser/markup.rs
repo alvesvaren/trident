@@ -3,7 +3,8 @@
 //! - `*text*` or `_text_`  => italic
 //! - `__text__`            => underline
 //! - `___text___`          => italic + underline (or nest, e.g. `__*text*__`)
-//! - `\*`, `\_`, `\\`      => literal character
+//! - `~~text~~`            => dashed underline (e.g. ER partial keys)
+//! - `\*`, `\_`, `\~`, `\\` => literal character
 //!
 //! Like CommonMark, underscores inside a word are not delimiters, so `snake_case_name`
 //! renders as-is. Unmatched delimiters are kept as literal text.
@@ -14,6 +15,7 @@ use serde::Serialize;
 pub struct TextStyle {
     pub italic: bool,
     pub underline: bool,
+    pub dashed_underline: bool,
 }
 
 impl TextStyle {
@@ -21,6 +23,7 @@ impl TextStyle {
         TextStyle {
             italic: self.italic || other.italic,
             underline: self.underline || other.underline,
+            dashed_underline: self.dashed_underline || other.dashed_underline,
         }
     }
 }
@@ -50,12 +53,14 @@ enum Piece {
 
 /// Style a delimiter run represents, or None if it isn't a supported delimiter.
 fn delim_style(ch: char, len: usize) -> Option<TextStyle> {
-    let italic = TextStyle { italic: true, underline: false };
-    let underline = TextStyle { italic: false, underline: true };
+    let italic = TextStyle { italic: true, ..Default::default() };
+    let underline = TextStyle { underline: true, ..Default::default() };
+    let dashed = TextStyle { dashed_underline: true, ..Default::default() };
     match (ch, len) {
         ('*', 1) | ('_', 1) => Some(italic),
         ('_', 2) => Some(underline),
         ('_', 3) => Some(italic.union(underline)),
+        ('~', 2) => Some(dashed),
         _ => None,
     }
 }
@@ -70,13 +75,13 @@ pub fn parse_inline(input: &str) -> Vec<StyledSpan> {
     while i < chars.len() {
         let c = chars[i];
 
-        if c == '\\' && matches!(chars.get(i + 1), Some('*' | '_' | '\\')) {
+        if c == '\\' && matches!(chars.get(i + 1), Some('*' | '_' | '~' | '\\')) {
             text.push(chars[i + 1]);
             i += 2;
             continue;
         }
 
-        if c != '*' && c != '_' {
+        if !matches!(c, '*' | '_' | '~') {
             text.push(c);
             i += 1;
             continue;
@@ -189,7 +194,17 @@ mod tests {
     use super::*;
 
     fn span(text: &str, italic: bool, underline: bool) -> StyledSpan {
-        StyledSpan { text: text.into(), style: TextStyle { italic, underline } }
+        StyledSpan { text: text.into(), style: TextStyle { italic, underline, dashed_underline: false } }
+    }
+
+    #[test]
+    fn dashed_underline() {
+        let dashed = TextStyle { dashed_underline: true, ..Default::default() };
+        assert_eq!(parse_inline("~~name~~"), vec![StyledSpan { text: "name".into(), style: dashed }]);
+        assert_eq!(parse_inline("+ ~Foo()"), vec![span("+ ~Foo()", false, false)]);
+        assert_eq!(parse_inline(r"\~\~x\~\~"), vec![span("~~x~~", false, false)]);
+        let (id, m) = parse_name("~~Foo~~").unwrap_or_default();
+        assert_eq!((id.as_str(), m.style), ("Foo", dashed));
     }
 
     #[test]
@@ -232,11 +247,11 @@ mod tests {
         let (id, m) = parse_name("*Foo*").unwrap();
         assert_eq!(id, "Foo");
         assert_eq!((m.open.as_str(), m.close.as_str()), ("*", "*"));
-        assert_eq!(m.style, TextStyle { italic: true, underline: false });
+        assert_eq!(m.style, TextStyle { italic: true, ..Default::default() });
 
         let (id, m) = parse_name("__my_class__").unwrap();
         assert_eq!(id, "my_class");
-        assert_eq!(m.style, TextStyle { italic: false, underline: true });
+        assert_eq!(m.style, TextStyle { underline: true, ..Default::default() });
 
         let (id, m) = parse_name("Plain").unwrap();
         assert_eq!(id, "Plain");

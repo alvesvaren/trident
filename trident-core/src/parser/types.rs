@@ -452,7 +452,7 @@ pub const KNOWN_NODE_KINDS: &[&str] = &["class", "node"];
 pub const CLASS_KEYWORDS: &[&str] = &["interface", "enum", "struct", "record", "trait", "object"];
 
 /// Keywords that create node kind + add themselves as modifier (shapes)
-pub const NODE_KEYWORDS: &[&str] = &["rectangle", "circle", "diamond"];
+pub const NODE_KEYWORDS: &[&str] = &["rectangle", "circle", "diamond", "triangle"];
 
 /// Check if a string is a known node kind
 pub fn is_node_kind(s: &str) -> bool {

@@ -33,7 +33,10 @@ const KEYWORDS = [
   "rectangle",
   "circle",
   "diamond",
+  "triangle",
   "group",
+  "weak",
+  "identifying",
   "abstract",
   "static",
   "sealed",
@@ -179,10 +182,10 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
     tokenPostfix: ".sdd",
 
     // Node kind keywords
-    nodeKinds: ["class", "interface", "enum", "struct", "record", "trait", "object", "node", "rectangle", "circle", "diamond"],
+    nodeKinds: ["class", "interface", "enum", "struct", "record", "trait", "object", "node", "rectangle", "circle", "diamond", "triangle"],
 
     // Modifier keywords
-    modifiers: ["abstract", "static", "sealed", "final", "public", "private", "protected"],
+    modifiers: ["abstract", "static", "sealed", "final", "public", "private", "protected", "weak", "identifying"],
 
     // Other keywords
     keywords: ["classDiagram", "group"],
@@ -195,7 +198,8 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
         // line comment
         [/%%.*$/, "comment"],
 
-        // markdown-style text styling: __underline__, *italic*, _italic_
+        // markdown-style text styling: __underline__, ~~dashed underline~~, *italic*, _italic_
+        [/~~(?=\S)[^\n]*?\S~~/, "underline"],
         [/(?<![A-Za-z0-9])__(?=\S)[^\n]*?\S__(?![A-Za-z0-9])/, "underline"],
         [/\*(?=[^\s*-])[^*\n]*?[^\s*]?\*/, "emphasis"],
         [/(?<![A-Za-z0-9])_(?=[^\s_])[^_\n]*?[^\s_]?_(?![A-Za-z0-9])/, "emphasis"],
@@ -229,10 +233,10 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
         [/:/, "delimiter"],
 
         // Node kinds (highlighted specially)
-        [/\b(class|interface|enum|struct|record|trait|object|node|rectangle|circle|diamond)\b/, "keyword.type"],
+        [/\b(class|interface|enum|struct|record|trait|object|node|rectangle|circle|diamond|triangle)\b/, "keyword.type"],
 
         // Modifiers (highlighted specially)
-        [/\b(abstract|static|sealed|final|public|private|protected)\b/, "keyword.modifier"],
+        [/\b(abstract|static|sealed|final|public|private|protected|weak|identifying)\b/, "keyword.modifier"],
 
         // Other keywords
         [/\b(classDiagram|group)\b/, "keyword"],
