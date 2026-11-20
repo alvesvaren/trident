@@ -30,7 +30,7 @@ fn generate_text_elements(node: &crate::parser::compile::Node, config: &NodeRend
     // The label is markup; a bare id is plain text styled by its declaration markup.
     // `abstract` always italicizes the whole title.
     let is_abstract = node.modifiers.iter().any(|m| m == "abstract");
-    let base_style = node.name_style.union(TextStyle { italic: is_abstract, underline: false });
+    let base_style = node.name_style.union(TextStyle { italic: is_abstract, ..Default::default() });
     let mut spans = match &node.label {
         Some(label) => parse_inline(label),
         None => vec![StyledSpan { text: node.id.0.clone(), style: TextStyle::default() }],
