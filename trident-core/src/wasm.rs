@@ -160,8 +160,8 @@ pub fn compile_diagram(input: &str) -> String {
         }
     };
     
-    // Use the layout algorithm specified in the AST, or default to hierarchical
-    let layout_name = ast.layout.as_deref().unwrap_or("hierarchical");
+    // Use the layout algorithm specified in the AST, or default to organic
+    let layout_name = ast.layout.as_deref().unwrap_or("organic");
     let layout_result = layout_diagram(&diagram, &LayoutConfig::default(), layout_name);
     
     // Build groups (only named groups, skip root and anonymous)

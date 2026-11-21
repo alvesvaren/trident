@@ -143,7 +143,7 @@ impl<'a> Parser<'a> {
         if t.starts_with("@layout:") {
             let layout_name = t.strip_prefix("@layout:").unwrap().trim().to_string();
             if layout_name.is_empty() {
-                return self.err(1, "@layout: requires a layout name (e.g., 'hierarchical' or 'grid')");
+                return self.err(1, "@layout: requires a layout name (e.g., 'organic', 'hierarchical' or 'grid')");
             }
             self.advance();
             return Ok(Some(layout_name));

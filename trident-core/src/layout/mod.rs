@@ -2,15 +2,17 @@
 //
 // This module provides layout algorithms for positioning diagram elements.
 // Available layout algorithms:
-// - "hierarchical" (default): Graph-driven layout that places connected nodes closer together
+// - "organic" (default): Stress-based layout with crossing reduction
+// - "hierarchical": Layered layout that places connected nodes in rows
 // - "grid": Simple left-to-right, top-to-bottom grid layout
 //
 // Submodules:
 // - spatial_grid: O(1) overlap detection
 // - adjacency: Edge weight computation
 // - placement: Graph-driven placement algorithm
-// - graph_driven: Default hierarchical layout
+// - graph_driven: Hierarchical layout
 // - grid: Simple grid layout
+// - organic: Default organic layout
 
 use std::collections::HashMap;
 
@@ -22,7 +24,7 @@ pub mod adjacency;
 pub mod placement;
 pub mod algorithms;
 
-pub use algorithms::{GraphDrivenLayout, layout_graph_driven, GridLayout, layout_grid};
+pub use algorithms::{GraphDrivenLayout, layout_graph_driven, GridLayout, layout_grid, OrganicLayout, layout_organic};
 
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize)]
@@ -140,11 +142,12 @@ pub trait LayoutStrategy {
 /// # Arguments
 /// * `diagram` - The diagram to layout
 /// * `cfg` - Layout configuration
-/// * `algorithm` - Layout algorithm name: "hierarchical" (default) or "grid"
+/// * `algorithm` - Layout algorithm name: "organic" (default), "hierarchical" or "grid"
 pub fn layout_diagram(diagram: &Diagram, cfg: &LayoutConfig, algorithm: &str) -> LayoutResult {
     match algorithm {
         "grid" => layout_grid(diagram, cfg),
-        "hierarchical" | _ => layout_graph_driven(diagram, cfg),
+        "hierarchical" => layout_graph_driven(diagram, cfg),
+        _ => layout_organic(diagram, cfg),
     }
 }
 
@@ -288,6 +291,93 @@ pub fn compute_group_local_bounds(
         y: bb.y - cfg.group_padding,
         w: bb.w + 2 * cfg.group_padding,
         h: bb.h + 2 * cfg.group_padding,
+    }
+}
+
+/// Positions of every group and node relative to their parent group.
+#[derive(Debug, Clone)]
+pub struct LocalLayout {
+    pub group_local_pos: HashMap<GroupId, PointI>,
+    pub node_local_pos: HashMap<NodeId, PointI>,
+    /// Group boxes (including padding) relative to the group's own position.
+    pub group_local_bounds: HashMap<GroupId, RectI>,
+}
+
+/// Lay out a diagram's groups bottom-up, then accumulate world coordinates.
+///
+/// `place_children(gid, group_local_pos, node_local_pos, group_local_bounds)` positions the
+/// direct children of one group in its local coordinates; the bounds of its child groups
+/// are already known when it is called.
+pub fn layout_nested<F>(diagram: &Diagram, cfg: &LayoutConfig, place_children: F) -> LayoutResult
+where
+    F: FnMut(GroupId, &mut HashMap<GroupId, PointI>, &mut HashMap<NodeId, PointI>, &HashMap<GroupId, RectI>),
+{
+    to_world(diagram, cfg, &layout_nested_local(diagram, cfg, place_children))
+}
+
+/// The bottom-up half of [`layout_nested`]: local positions only.
+pub fn layout_nested_local<F>(diagram: &Diagram, cfg: &LayoutConfig, mut place_children: F) -> LocalLayout
+where
+    F: FnMut(GroupId, &mut HashMap<GroupId, PointI>, &mut HashMap<NodeId, PointI>, &HashMap<GroupId, RectI>),
+{
+    let mut group_local_pos: HashMap<GroupId, PointI> = HashMap::new();
+    let mut node_local_pos: HashMap<NodeId, PointI> = HashMap::new();
+    let mut group_local_bounds: HashMap<GroupId, RectI> = HashMap::new();
+    group_local_pos.insert(diagram.root, PointI { x: 0, y: 0 });
+
+    // Children before parents, so a group's size is known before it gets placed.
+    for gid in post_order_groups(diagram) {
+        if gid != diagram.root {
+            // Respect a constrained position; otherwise the parent will place it.
+            let p = diagram.groups[gid.0].pos.unwrap_or(PointI { x: 0, y: 0 });
+            group_local_pos.insert(gid, p);
+        }
+        place_children(gid, &mut group_local_pos, &mut node_local_pos, &group_local_bounds);
+        let bounds = compute_group_local_bounds(diagram, gid, cfg, &group_local_pos, &node_local_pos, &group_local_bounds);
+        group_local_bounds.insert(gid, bounds);
+    }
+    LocalLayout { group_local_pos, node_local_pos, group_local_bounds }
+}
+
+/// Accumulate local positions into world positions and bounds.
+pub fn to_world(diagram: &Diagram, cfg: &LayoutConfig, local: &LocalLayout) -> LayoutResult {
+    let LocalLayout { group_local_pos, node_local_pos, group_local_bounds } = local;
+    let mut group_world_pos: HashMap<GroupId, PointI> = HashMap::new();
+    let mut node_world_pos: HashMap<NodeId, PointI> = HashMap::new();
+    let mut group_world_bounds: HashMap<GroupId, RectI> = HashMap::new();
+    let mut node_world_bounds: HashMap<NodeId, RectI> = HashMap::new();
+
+    // Parents before children, so a parent's world position is known.
+    for gid in pre_order_groups(diagram) {
+        let g_local = *group_local_pos.get(&gid).unwrap_or(&PointI { x: 0, y: 0 });
+        let g_world = match diagram.groups[gid.0].parent {
+            None => PointI { x: 0, y: 0 },
+            Some(parent) => {
+                let pw = group_world_pos[&parent];
+                PointI { x: pw.x + g_local.x, y: pw.y + g_local.y }
+            }
+        };
+        group_world_pos.insert(gid, g_world);
+
+        let lb = group_local_bounds[&gid];
+        group_world_bounds.insert(gid, RectI { x: g_world.x + lb.x, y: g_world.y + lb.y, w: lb.w, h: lb.h });
+
+        for &nid in &diagram.groups[gid.0].children_nodes {
+            let n_local = *node_local_pos.get(&nid).unwrap_or(&PointI { x: 0, y: 0 });
+            let n_world = PointI { x: g_world.x + n_local.x, y: g_world.y + n_local.y };
+            node_world_pos.insert(nid, n_world);
+            let sz = get_node_size(&diagram.nodes[nid.0], cfg);
+            node_world_bounds.insert(nid, RectI { x: n_world.x, y: n_world.y, w: sz.w, h: sz.h });
+        }
+    }
+
+    LayoutResult {
+        group_local_pos: group_local_pos.clone(),
+        node_local_pos: node_local_pos.clone(),
+        group_world_pos,
+        node_world_pos,
+        group_world_bounds,
+        node_world_bounds,
     }
 }
 

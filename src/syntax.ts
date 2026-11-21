@@ -210,7 +210,7 @@ export function registerSddLanguage(monacoApi: typeof monaco) {
         // directive (currently only @pos:)
         [/[@]pos:/, "annotation"],
 
-        // layout directive (@layout: grid, @layout: hierarchical)
+        // layout directive (@layout: organic, @layout: hierarchical, @layout: grid)
         [/[@]layout:/, "annotation"],
 
         // size directives (@width: and @height:)

@@ -60,7 +60,7 @@ The markup around a node name is not part of its identifier, so relations still 
 
 #### Directives
 - **`@pos: (x, y)`** - Manually position a node or group (relative to parent)
-- **`@layout: hierarchical`** or **`@layout: grid`** - Set the layout algorithm for the diagram
+- **`@layout: organic`**, **`@layout: hierarchical`** or **`@layout: grid`** - Set the layout algorithm for the diagram
 - **`@width: value`** - Set custom width for a node
 - **`@height: value`** - Set custom height for a node
 
@@ -87,8 +87,11 @@ Relations can be written with or without spaces: `A-->B` or `A --> B`
 - Line comments: `%% This is a comment`
 
 #### Layout Algorithms
-- **Hierarchical** (default) - Graph-driven layout that places connected nodes closer together, respecting hierarchy
+- **Organic** (default) - Stress-based layout that keeps connected nodes close, avoids crossing edges and edges running through nodes, and fans leaf nodes (such as ER attributes) out around the node they belong to. Deterministic; locked (`@pos`) nodes stay put and dragging one only nudges its neighbours
+- **Hierarchical** - Layered layout that places connected nodes in rows, respecting hierarchy
 - **Grid** - Simple left-to-right, top-to-bottom grid layout
+
+To compare layouts outside the browser: `cargo run --release --example layout_preview -- --unlock --layout organic --svg OUT_DIR FILE.trd` (in `trident-core/`) prints crossing/overlap counts and writes an SVG preview.
 
 ### Editor Features
 
